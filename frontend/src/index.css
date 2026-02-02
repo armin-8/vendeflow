@@ -1,0 +1,93 @@
+/*
+ * VendeFlow - Estilos Globales
+ * ============================
+ * 
+ * INTRODUCCIÓN A TAILWIND CSS
+ * ---------------------------
+ * 
+ * En Bootstrap escribías clases como: "btn btn-primary btn-lg"
+ * En Tailwind escribes clases como: "bg-blue-500 text-white px-4 py-2 rounded"
+ * 
+ * Parece más largo, pero la ventaja es que tienes CONTROL TOTAL sobre cada estilo.
+ * 
+ * Las 3 líneas de abajo son OBLIGATORIAS para que Tailwind funcione:
+ */
+
+/* 1. Base: Reset de estilos y elementos HTML básicos */
+@tailwind base;
+
+/* 2. Components: Clases para componentes (botones, cards, etc.) */
+@tailwind components;
+
+/* 3. Utilities: Todas las utilidades (bg-*, text-*, p-*, etc.) */
+@tailwind utilities;
+
+
+/*
+ * ═══════════════════════════════════════════════════════════
+ * COMPONENTES PERSONALIZADOS
+ * ═══════════════════════════════════════════════════════════
+ * 
+ * Aquí puedes crear clases reutilizables usando @apply
+ * Es como crear tu propio "btn-primary" pero con Tailwind
+ */
+
+@layer components {
+  /* Botón primario */
+  .btn-primary {
+    @apply bg-primary-500 text-white px-4 py-2 rounded-lg font-medium
+           hover:bg-primary-600 transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  
+  /* Botón secundario */
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium
+           hover:bg-gray-300 transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+  }
+  
+  /* Botón de éxito */
+  .btn-success {
+    @apply bg-secondary-500 text-white px-4 py-2 rounded-lg font-medium
+           hover:bg-secondary-600 transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2;
+  }
+  
+  /* Input de formulario */
+  .input-field {
+    @apply w-full px-4 py-2 border border-gray-300 rounded-lg
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+           placeholder-gray-400;
+  }
+  
+  /* Card/Tarjeta */
+  .card {
+    @apply bg-white rounded-xl shadow-md p-6;
+  }
+}
+
+
+/*
+ * ═══════════════════════════════════════════════════════════
+ * ESTILOS BASE PERSONALIZADOS
+ * ═══════════════════════════════════════════════════════════
+ */
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+  
+  h1 {
+    @apply text-3xl font-bold;
+  }
+  
+  h2 {
+    @apply text-2xl font-semibold;
+  }
+  
+  h3 {
+    @apply text-xl font-semibold;
+  }
+}

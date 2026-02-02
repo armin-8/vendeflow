@@ -1,0 +1,23 @@
+# VendeFlow Backend - Requirements
+# Compatible con Python 3.13
+
+# Core Framework
+flask==3.1.0
+flask-cors==5.0.0
+flask-jwt-extended==4.7.1
+flask-migrate==4.1.0
+
+# Database
+sqlalchemy==2.0.36
+flask-sqlalchemy==3.1.1
+
+# Validation (versiones compatibles con Python 3.13)
+pydantic==2.10.4
+email-validator==2.2.0
+
+# Security
+python-dotenv==1.0.1
+werkzeug==3.1.3
+
+# Utilities
+gunicorn==23.0.0
