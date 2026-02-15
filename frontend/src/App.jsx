@@ -3,6 +3,18 @@
  * =================================
  * 
  * Define la estructura general de la aplicación y las rutas.
+ * 
+ * RUTAS:
+ * ------
+ * Públicas (cualquiera puede acceder):
+ *   /          → Landing page
+ *   /login     → Iniciar sesión
+ *   /register  → Registrarse
+ * 
+ * Protegidas (requieren autenticación):
+ *   /dashboard → Panel principal
+ *   /inventory → Lista de productos
+ *   /import    → Importar desde Excel/CSV
  */
 
 import { Routes, Route } from 'react-router-dom'
@@ -16,6 +28,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Inventory from './pages/Inventory'
+import Import from './pages/Import'
 import NotFound from './pages/NotFound'
 
 // Componente de ruta protegida
@@ -34,7 +47,7 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="inventory" element={<Inventory />} />
-          {/* Aquí agregaremos más rutas protegidas */}
+          <Route path="import" element={<Import />} />
         </Route>
         
         {/* 404 */}

@@ -1,10 +1,17 @@
 """
 VendeFlow - Servicios de Negocio
 ================================
-Aquí irán los servicios que conectan con APIs externas.
+Aquí están los servicios que manejan la lógica de negocio.
+
+SERVICIOS DISPONIBLES:
+- import_service: Importación de productos desde Excel/CSV
 
 SERVICIOS PLANEADOS:
-- shopify_service.py    - Conexión con Shopify API
-- amazon_service.py     - Conexión con Amazon API
-- mercadolibre_service.py - Conexión con Mercado Libre API
+- shopify_service: Conexión con Shopify API
+- amazon_service: Conexión con Amazon API
+- mercadolibre_service: Conexión con Mercado Libre API
 """
+
+from app.services.import_service import read_import_file, get_template_columns
+
+__all__ = ['read_import_file', 'get_template_columns']

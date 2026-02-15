@@ -24,8 +24,13 @@ async function request(endpoint, options = {}) {
   
   // Configurar headers
   const headers = {
-    'Content-Type': 'application/json',
     ...options.headers
+  }
+  
+  // Solo agregar Content-Type si no es FormData
+  // (FormData necesita que el navegador ponga el Content-Type automáticamente)
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
   }
   
   // Agregar token si existe
@@ -100,16 +105,8 @@ export const authService = {
 export const inventoryService = {
   /**
    * Obtener todos los productos con paginación y filtros.
-   * 
-   * @param {Object} params - Parámetros de búsqueda
-   * @param {number} params.page - Número de página
-   * @param {number} params.per_page - Productos por página
-   * @param {string} params.search - Buscar por nombre o SKU
-   * @param {string} params.category - Filtrar por categoría
-   * @param {boolean} params.low_stock - Solo productos con stock bajo
    */
   getAll: async (params = {}) => {
-    // Construir query string
     const queryParams = new URLSearchParams()
     
     if (params.page) queryParams.append('page', params.page)
@@ -133,17 +130,6 @@ export const inventoryService = {
   
   /**
    * Crear un nuevo producto.
-   * 
-   * @param {Object} productData - Datos del producto
-   * @param {string} productData.sku - Código único
-   * @param {string} productData.name - Nombre
-   * @param {string} productData.description - Descripción
-   * @param {number} productData.price - Precio de venta
-   * @param {number} productData.cost - Costo
-   * @param {number} productData.quantity - Cantidad en stock
-   * @param {number} productData.min_stock - Stock mínimo para alerta
-   * @param {string} productData.category - Categoría
-   * @param {string} productData.brand - Marca
    */
   create: async (productData) => {
     return request('/inventory', {
@@ -176,5 +162,53 @@ export const inventoryService = {
    */
   getStats: async () => {
     return request('/inventory/stats')
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SERVICIOS DE IMPORTACIÓN
+// ═══════════════════════════════════════════════════════════
+
+export const importService = {
+  /**
+   * Subir archivo y obtener vista previa.
+   * 
+   * ¿QUÉ ES FormData?
+   * -----------------
+   * Es la forma de enviar archivos en JavaScript.
+   * Es como un formulario HTML pero en código.
+   * 
+   * @param {File} file - Archivo seleccionado por el usuario
+   * @returns {Promise} - Respuesta con productos leídos
+   */
+  preview: async (file) => {
+    // Crear FormData y agregar el archivo
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    return request('/import/preview', {
+      method: 'POST',
+      body: formData  // No usamos JSON.stringify con FormData
+    })
+  },
+  
+  /**
+   * Confirmar importación y guardar productos.
+   * 
+   * @param {boolean} updateExisting - Si actualizar productos que ya existen
+   * @returns {Promise} - Resultado de la importación
+   */
+  confirm: async (updateExisting = false) => {
+    return request('/import/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ update_existing: updateExisting })
+    })
+  },
+  
+  /**
+   * Obtener información sobre las columnas esperadas.
+   */
+  getTemplate: async () => {
+    return request('/import/template')
   }
 }

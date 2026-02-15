@@ -60,6 +60,12 @@ function Navbar() {
                 >
                   Inventario
                 </Link>
+                <Link 
+                  to="/import" 
+                  className="text-gray-600 hover:text-primary-500 transition-colors"
+                >
+                  Importar
+                </Link>
                 
                 {/* Separador */}
                 <div className="h-6 w-px bg-gray-300"></div>

@@ -55,10 +55,15 @@ def create_app(config_class=None):
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
     
-    # Registrar blueprints (rutas)
-    from app.routes import auth_routes, inventory_routes
-    app.register_blueprint(auth_routes.bp)
-    app.register_blueprint(inventory_routes.bp)
+    # ═══════════════════════════════════════════════════════════
+    # REGISTRAR BLUEPRINTS (RUTAS)
+    # ═══════════════════════════════════════════════════════════
+    
+    from app.routes import auth_routes, inventory_routes, import_routes
+    
+    app.register_blueprint(auth_routes.bp)        # /api/auth/*
+    app.register_blueprint(inventory_routes.bp)   # /api/inventory/*
+    app.register_blueprint(import_routes.bp)      # /api/import/*
     
     # Ruta de health check
     @app.route('/api/health')
