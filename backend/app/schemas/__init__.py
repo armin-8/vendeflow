@@ -11,9 +11,22 @@ from app.schemas.user_schema import (
     UserUpdate
 )
 
+from app.schemas.product_schema import (
+    ProductCreate,
+    ProductUpdate,
+    ProductResponse,
+    ProductList
+)
+
 __all__ = [
+    # User schemas
     'UserCreate',
     'UserLogin', 
     'UserResponse',
-    'UserUpdate'
+    'UserUpdate',
+    # Product schemas
+    'ProductCreate',
+    'ProductUpdate',
+    'ProductResponse',
+    'ProductList'
 ]

@@ -65,8 +65,10 @@ def create_app(config_class=None):
     def health_check():
         return {'status': 'ok', 'message': 'VendeFlow API is running'}
     
-    # Crear tablas en desarrollo (si no existen)
+    # Importar modelos y crear tablas en desarrollo
     with app.app_context():
+        # Importar TODOS los modelos para que SQLAlchemy los registre
+        from app.models import User, Product
         db.create_all()
     
     return app
