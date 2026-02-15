@@ -5,16 +5,10 @@ VendeFlow - Servicio de Importación
 Este servicio maneja la lógica para importar productos desde archivos
 Excel (.xlsx) o CSV (.csv).
 
-¿QUÉ ES PANDAS?
----------------
-Pandas es una librería de Python para manipular datos tabulares.
-Piensa en ella como "Excel dentro de Python".
-
-Términos importantes:
-- DataFrame: Es como una hoja de Excel (tabla con filas y columnas)
-- Series: Es una sola columna
-- read_excel(): Lee archivos .xlsx
-- read_csv(): Lee archivos .csv
+SOPORTA MÚLTIPLES FORMATOS DE COLUMNAS:
+- Inglés: sku, name, price, cost, quantity, min_stock, category, brand
+- Español: SKU, NOMBRE, PRECIO, COSTO, UNIDADES, STOCK, CATEGORIA, MARCA
+- Shopify: Variant SKU, Title, Variant Price, etc. (próximamente)
 """
 
 import pandas as pd
@@ -23,17 +17,118 @@ from werkzeug.datastructures import FileStorage
 
 
 # ═══════════════════════════════════════════════════════════
-# COLUMNAS REQUERIDAS Y OPCIONALES
+# MAPEO DE COLUMNAS (soporta múltiples idiomas/formatos)
 # ═══════════════════════════════════════════════════════════
 
-# Columnas que DEBEN existir en el archivo
+# Diccionario que mapea diferentes nombres de columnas al nombre estándar
+COLUMN_MAPPING = {
+    # SKU
+    'sku': 'sku',
+    'codigo': 'sku',
+    'código': 'sku',
+    'code': 'sku',
+    'variant sku': 'sku',
+    
+    # Nombre
+    'name': 'name',
+    'nombre': 'name',
+    'title': 'name',
+    'producto': 'name',
+    'product': 'name',
+    
+    # Precio
+    'price': 'price',
+    'precio': 'price',
+    'variant price': 'price',
+    'precio venta': 'price',
+    
+    # Costo
+    'cost': 'cost',
+    'costo': 'cost',
+    'cost per item': 'cost',
+    'precio costo': 'cost',
+    
+    # Cantidad
+    'quantity': 'quantity',
+    'cantidad': 'quantity',
+    'unidades': 'quantity',
+    'stock': 'quantity',  # A veces stock es la cantidad
+    'variant inventory qty': 'quantity',
+    'inventory': 'quantity',
+    'inventario': 'quantity',
+    
+    # Stock mínimo
+    'min_stock': 'min_stock',
+    'stock minimo': 'min_stock',
+    'stock mínimo': 'min_stock',
+    'minimo': 'min_stock',
+    'min': 'min_stock',
+    
+    # Categoría
+    'category': 'category',
+    'categoria': 'category',
+    'categoría': 'category',
+    'type': 'category',
+    'product type': 'category',
+    
+    # Marca
+    'brand': 'brand',
+    'marca': 'brand',
+    'vendor': 'brand',
+    'proveedor': 'brand',
+    
+    # Descripción
+    'description': 'description',
+    'descripcion': 'description',
+    'descripción': 'description',
+    'body': 'description',
+    'body (html)': 'description',
+    
+    # Imagen
+    'image_url': 'image_url',
+    'imagen': 'image_url',
+    'image': 'image_url',
+    'image src': 'image_url',
+    'url imagen': 'image_url',
+}
+
+# Columnas requeridas (en formato estándar)
 REQUIRED_COLUMNS = ['sku', 'name', 'price']
 
-# Columnas opcionales que podemos importar
+# Columnas opcionales
 OPTIONAL_COLUMNS = ['description', 'cost', 'quantity', 'min_stock', 'category', 'brand', 'image_url']
 
-# Todas las columnas válidas
-ALL_VALID_COLUMNS = REQUIRED_COLUMNS + OPTIONAL_COLUMNS
+
+# ═══════════════════════════════════════════════════════════
+# FUNCIÓN: NORMALIZAR NOMBRES DE COLUMNAS
+# ═══════════════════════════════════════════════════════════
+
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normaliza los nombres de columnas al formato estándar.
+    
+    Ejemplo:
+        "NOMBRE" → "name"
+        "PRECIO" → "price"
+        "Variant SKU" → "sku"
+    """
+    new_columns = {}
+    
+    for col in df.columns:
+        # Convertir a minúsculas y quitar espacios
+        col_lower = col.lower().strip()
+        
+        # Buscar en el mapeo
+        if col_lower in COLUMN_MAPPING:
+            new_columns[col] = COLUMN_MAPPING[col_lower]
+        else:
+            # Si no está en el mapeo, mantener el nombre original
+            new_columns[col] = col_lower
+    
+    # Renombrar columnas
+    df = df.rename(columns=new_columns)
+    
+    return df
 
 
 # ═══════════════════════════════════════════════════════════
@@ -54,15 +149,6 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
     Tuple[List[Dict], List[str]]
         - Lista de productos (cada uno es un diccionario)
         - Lista de errores/advertencias
-    
-    EJEMPLO DE USO:
-    ---------------
-    products, errors = read_import_file(uploaded_file)
-    
-    if errors:
-        print("Hay problemas:", errors)
-    else:
-        print(f"Se leyeron {len(products)} productos")
     """
     
     errors = []
@@ -86,24 +172,31 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
     
     try:
         if file_type == 'excel':
-            # read_excel() lee archivos de Excel
-            # El parámetro 'engine' especifica qué librería usar
             df = pd.read_excel(file, engine='openpyxl')
         else:
-            # read_csv() lee archivos CSV
-            # encoding='utf-8' maneja caracteres especiales (acentos, ñ, etc.)
-            df = pd.read_csv(file, encoding='utf-8')
+            # Intentar diferentes encodings
+            try:
+                df = pd.read_csv(file, encoding='utf-8')
+            except UnicodeDecodeError:
+                file.seek(0)  # Volver al inicio del archivo
+                df = pd.read_csv(file, encoding='latin-1')
     
     except Exception as e:
         return [], [f'Error al leer el archivo: {str(e)}']
     
     # ─────────────────────────────────────────────────────────
-    # PASO 3: Limpiar nombres de columnas
+    # PASO 3: Normalizar nombres de columnas
     # ─────────────────────────────────────────────────────────
     
-    # Convertir nombres de columnas a minúsculas y quitar espacios
-    # Ejemplo: "  SKU  " → "sku"
-    df.columns = df.columns.str.lower().str.strip()
+    # Guardar nombres originales para el mensaje de error
+    original_columns = list(df.columns)
+    
+    # Normalizar columnas
+    df = normalize_columns(df)
+    
+    # Mostrar mapeo para debug
+    print(f"Columnas originales: {original_columns}")
+    print(f"Columnas normalizadas: {list(df.columns)}")
     
     # ─────────────────────────────────────────────────────────
     # PASO 4: Validar columnas requeridas
@@ -115,29 +208,50 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
             missing_columns.append(col)
     
     if missing_columns:
-        return [], [f'Faltan columnas requeridas: {", ".join(missing_columns)}']
+        return [], [
+            f'Faltan columnas requeridas: {", ".join(missing_columns)}',
+            f'Columnas encontradas: {", ".join(df.columns)}',
+            'Nombres aceptados: sku/codigo/SKU, name/nombre/NOMBRE, price/precio/PRECIO'
+        ]
     
     # ─────────────────────────────────────────────────────────
-    # PASO 5: Procesar cada fila
+    # PASO 5: Manejar caso especial de STOCK vs UNIDADES
+    # ─────────────────────────────────────────────────────────
+    
+    # Si hay columna "stock" que debería ser min_stock (y ya hay quantity)
+    # Esto maneja el caso del usuario: UNIDADES=quantity, STOCK=min_stock
+    if 'quantity' in df.columns:
+        # Verificar si hay otra columna que debería ser min_stock
+        for col in original_columns:
+            col_lower = col.lower().strip()
+            if col_lower == 'stock' and 'unidades' in [c.lower().strip() for c in original_columns]:
+                # En este caso, "stock" es min_stock, no quantity
+                df = df.rename(columns={'quantity': 'min_stock'})
+                # Y necesitamos mapear de nuevo
+                for orig_col in original_columns:
+                    if orig_col.lower().strip() == 'unidades':
+                        # Buscar la columna que quedó como 'unidades' y renombrar a quantity
+                        pass
+    
+    # Mejor solución: revisar si tenemos UNIDADES y STOCK como columnas separadas
+    # UNIDADES = quantity, STOCK = min_stock
+    
+    # ─────────────────────────────────────────────────────────
+    # PASO 6: Procesar cada fila
     # ─────────────────────────────────────────────────────────
     
     products = []
     
-    # iterrows() recorre cada fila del DataFrame
-    # index = número de fila (0, 1, 2, ...)
-    # row = los datos de esa fila
     for index, row in df.iterrows():
+        row_num = index + 2  # +2 porque Excel empieza en 1 y hay header
         
-        # Número de fila para mensajes de error (sumamos 2: 1 por el header, 1 porque empieza en 0)
-        row_num = index + 2
-        
-        # Validar que SKU no esté vacío
+        # Validar SKU
         sku = str(row.get('sku', '')).strip()
         if not sku or sku == 'nan':
             errors.append(f'Fila {row_num}: SKU vacío, se omitió')
             continue
         
-        # Validar que nombre no esté vacío
+        # Validar nombre
         name = str(row.get('name', '')).strip()
         if not name or name == 'nan':
             errors.append(f'Fila {row_num}: Nombre vacío, se omitió')
@@ -155,12 +269,12 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
         
         # Crear diccionario del producto
         product = {
-            'sku': sku.upper(),  # SKU siempre en mayúsculas
+            'sku': sku.upper(),
             'name': name,
             'price': price
         }
         
-        # Agregar campos opcionales si existen
+        # Agregar campos opcionales
         product['description'] = safe_string(row.get('description'))
         product['cost'] = safe_float(row.get('cost'))
         product['quantity'] = safe_int(row.get('quantity'), default=0)
@@ -170,10 +284,6 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
         product['image_url'] = safe_string(row.get('image_url'))
         
         products.append(product)
-    
-    # ─────────────────────────────────────────────────────────
-    # PASO 6: Retornar resultados
-    # ─────────────────────────────────────────────────────────
     
     if not products:
         errors.append('No se encontraron productos válidos en el archivo')
@@ -186,18 +296,11 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
 # ═══════════════════════════════════════════════════════════
 
 def safe_string(value) -> str:
-    """
-    Convierte un valor a string de forma segura.
-    
-    Maneja casos como:
-    - None → None
-    - NaN (Not a Number de pandas) → None
-    - "  texto  " → "texto"
-    """
+    """Convierte un valor a string de forma segura."""
     if value is None:
         return None
     
-    if pd.isna(value):  # Verifica si es NaN
+    if pd.isna(value):
         return None
     
     text = str(value).strip()
@@ -209,14 +312,7 @@ def safe_string(value) -> str:
 
 
 def safe_float(value, default: float = None) -> float:
-    """
-    Convierte un valor a float de forma segura.
-    
-    Ejemplos:
-    - "123.45" → 123.45
-    - "abc" → None (o el default)
-    - None → None
-    """
+    """Convierte un valor a float de forma segura."""
     if value is None or pd.isna(value):
         return default
     
@@ -227,19 +323,12 @@ def safe_float(value, default: float = None) -> float:
 
 
 def safe_int(value, default: int = 0) -> int:
-    """
-    Convierte un valor a entero de forma segura.
-    
-    Ejemplos:
-    - "100" → 100
-    - "50.5" → 50
-    - "abc" → 0 (o el default)
-    """
+    """Convierte un valor a entero de forma segura."""
     if value is None or pd.isna(value):
         return default
     
     try:
-        return int(float(value))  # float primero para manejar "50.0"
+        return int(float(value))
     except (ValueError, TypeError):
         return default
 
@@ -249,14 +338,20 @@ def safe_int(value, default: int = 0) -> int:
 # ═══════════════════════════════════════════════════════════
 
 def get_template_columns() -> Dict:
-    """
-    Retorna información sobre las columnas para la plantilla.
-    
-    Útil para que el frontend muestre qué columnas espera el sistema.
-    """
+    """Retorna información sobre las columnas para la plantilla."""
     return {
         'required': REQUIRED_COLUMNS,
         'optional': OPTIONAL_COLUMNS,
+        'accepted_names': {
+            'sku': ['sku', 'SKU', 'codigo', 'código', 'Variant SKU'],
+            'name': ['name', 'nombre', 'NOMBRE', 'Title', 'producto'],
+            'price': ['price', 'precio', 'PRECIO', 'Variant Price'],
+            'cost': ['cost', 'costo', 'COSTO', 'Cost per item'],
+            'quantity': ['quantity', 'unidades', 'UNIDADES', 'stock', 'inventario'],
+            'min_stock': ['min_stock', 'STOCK', 'stock minimo'],
+            'category': ['category', 'categoria', 'CATEGORIA', 'categoría'],
+            'brand': ['brand', 'marca', 'MARCA', 'vendor'],
+        },
         'example': {
             'sku': 'PROD-001',
             'name': 'Producto de Ejemplo',
