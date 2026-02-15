@@ -4,20 +4,6 @@
  * 
  * Barra de navegación superior.
  * Muestra diferentes opciones según si el usuario está autenticado o no.
- * 
- * AQUÍ APRENDERÁS TAILWIND:
- * -------------------------
- * Fíjate en las clases CSS y te explico las más importantes:
- * 
- * - bg-white        → Fondo blanco
- * - shadow-md       → Sombra mediana
- * - px-4            → Padding horizontal de 1rem (16px)
- * - py-3            → Padding vertical de 0.75rem (12px)
- * - flex            → Display flex
- * - items-center    → Alinear items al centro (vertical)
- * - justify-between → Espacio entre elementos
- * - hover:bg-gray-100 → Al hacer hover, fondo gris claro
- * - rounded-lg      → Bordes redondeados
  */
 
 import { Link, useNavigate } from 'react-router-dom'
@@ -39,7 +25,6 @@ function Navbar() {
           
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            {/* Icono simple con SVG */}
             <svg 
               className="w-8 h-8 text-primary-500" 
               fill="none" 
@@ -62,15 +47,24 @@ function Navbar() {
           <div className="flex items-center space-x-4">
             {isAuthenticated ? (
               <>
-                {/* Usuario autenticado */}
+                {/* Links de navegación */}
                 <Link 
                   to="/dashboard" 
                   className="text-gray-600 hover:text-primary-500 transition-colors"
                 >
                   Dashboard
                 </Link>
+                <Link 
+                  to="/inventory" 
+                  className="text-gray-600 hover:text-primary-500 transition-colors"
+                >
+                  Inventario
+                </Link>
                 
-                {/* Dropdown de usuario (simplificado) */}
+                {/* Separador */}
+                <div className="h-6 w-px bg-gray-300"></div>
+                
+                {/* Usuario */}
                 <div className="flex items-center space-x-3">
                   <span className="text-gray-700">
                     Hola, <strong>{user?.first_name}</strong>

@@ -15,6 +15,7 @@ import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
+import Inventory from './pages/Inventory'
 import NotFound from './pages/NotFound'
 
 // Componente de ruta protegida
@@ -32,6 +33,7 @@ function App() {
         {/* Rutas protegidas (requieren autenticación) */}
         <Route element={<ProtectedRoute />}>
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="inventory" element={<Inventory />} />
           {/* Aquí agregaremos más rutas protegidas */}
         </Route>
         
