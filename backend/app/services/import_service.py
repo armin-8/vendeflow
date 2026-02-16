@@ -8,7 +8,6 @@ Excel (.xlsx) o CSV (.csv).
 SOPORTA MÚLTIPLES FORMATOS DE COLUMNAS:
 - Inglés: sku, name, price, cost, quantity, min_stock, category, brand
 - Español: SKU, NOMBRE, PRECIO, COSTO, UNIDADES, STOCK, CATEGORIA, MARCA
-- Shopify: Variant SKU, Title, Variant Price, etc. (próximamente)
 """
 
 import pandas as pd
@@ -20,7 +19,6 @@ from werkzeug.datastructures import FileStorage
 # MAPEO DE COLUMNAS (soporta múltiples idiomas/formatos)
 # ═══════════════════════════════════════════════════════════
 
-# Diccionario que mapea diferentes nombres de columnas al nombre estándar
 COLUMN_MAPPING = {
     # SKU
     'sku': 'sku',
@@ -48,17 +46,17 @@ COLUMN_MAPPING = {
     'cost per item': 'cost',
     'precio costo': 'cost',
     
-    # Cantidad
+    # Cantidad (UNIDADES)
     'quantity': 'quantity',
     'cantidad': 'quantity',
     'unidades': 'quantity',
-    'stock': 'quantity',  # A veces stock es la cantidad
     'variant inventory qty': 'quantity',
     'inventory': 'quantity',
     'inventario': 'quantity',
     
-    # Stock mínimo
+    # Stock mínimo (STOCK)
     'min_stock': 'min_stock',
+    'stock': 'min_stock',
     'stock minimo': 'min_stock',
     'stock mínimo': 'min_stock',
     'minimo': 'min_stock',
@@ -92,10 +90,7 @@ COLUMN_MAPPING = {
     'url imagen': 'image_url',
 }
 
-# Columnas requeridas (en formato estándar)
 REQUIRED_COLUMNS = ['sku', 'name', 'price']
-
-# Columnas opcionales
 OPTIONAL_COLUMNS = ['description', 'cost', 'quantity', 'min_stock', 'category', 'brand', 'image_url']
 
 
@@ -106,28 +101,30 @@ OPTIONAL_COLUMNS = ['description', 'cost', 'quantity', 'min_stock', 'category', 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normaliza los nombres de columnas al formato estándar.
-    
-    Ejemplo:
-        "NOMBRE" → "name"
-        "PRECIO" → "price"
-        "Variant SKU" → "sku"
+    Maneja columnas duplicadas agregando sufijo.
     """
-    new_columns = {}
+    new_columns = []
+    seen_columns = {}
     
     for col in df.columns:
-        # Convertir a minúsculas y quitar espacios
         col_lower = col.lower().strip()
         
         # Buscar en el mapeo
         if col_lower in COLUMN_MAPPING:
-            new_columns[col] = COLUMN_MAPPING[col_lower]
+            new_name = COLUMN_MAPPING[col_lower]
         else:
-            # Si no está en el mapeo, mantener el nombre original
-            new_columns[col] = col_lower
+            new_name = col_lower
+        
+        # Manejar duplicados
+        if new_name in seen_columns:
+            seen_columns[new_name] += 1
+            new_name = f"{new_name}_{seen_columns[new_name]}"
+        else:
+            seen_columns[new_name] = 0
+        
+        new_columns.append(new_name)
     
-    # Renombrar columnas
-    df = df.rename(columns=new_columns)
-    
+    df.columns = new_columns
     return df
 
 
@@ -138,17 +135,6 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
     """
     Lee un archivo Excel o CSV y retorna los datos como lista de diccionarios.
-    
-    PARÁMETROS:
-    -----------
-    file : FileStorage
-        Archivo subido por el usuario (viene del request de Flask)
-    
-    RETORNA:
-    --------
-    Tuple[List[Dict], List[str]]
-        - Lista de productos (cada uno es un diccionario)
-        - Lista de errores/advertencias
     """
     
     errors = []
@@ -174,11 +160,10 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
         if file_type == 'excel':
             df = pd.read_excel(file, engine='openpyxl')
         else:
-            # Intentar diferentes encodings
             try:
                 df = pd.read_csv(file, encoding='utf-8')
             except UnicodeDecodeError:
-                file.seek(0)  # Volver al inicio del archivo
+                file.seek(0)
                 df = pd.read_csv(file, encoding='latin-1')
     
     except Exception as e:
@@ -188,13 +173,9 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
     # PASO 3: Normalizar nombres de columnas
     # ─────────────────────────────────────────────────────────
     
-    # Guardar nombres originales para el mensaje de error
     original_columns = list(df.columns)
-    
-    # Normalizar columnas
     df = normalize_columns(df)
     
-    # Mostrar mapeo para debug
     print(f"Columnas originales: {original_columns}")
     print(f"Columnas normalizadas: {list(df.columns)}")
     
@@ -215,73 +196,45 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
         ]
     
     # ─────────────────────────────────────────────────────────
-    # PASO 5: Manejar caso especial de STOCK vs UNIDADES
-    # ─────────────────────────────────────────────────────────
-    
-    # Si hay columna "stock" que debería ser min_stock (y ya hay quantity)
-    # Esto maneja el caso del usuario: UNIDADES=quantity, STOCK=min_stock
-    if 'quantity' in df.columns:
-        # Verificar si hay otra columna que debería ser min_stock
-        for col in original_columns:
-            col_lower = col.lower().strip()
-            if col_lower == 'stock' and 'unidades' in [c.lower().strip() for c in original_columns]:
-                # En este caso, "stock" es min_stock, no quantity
-                df = df.rename(columns={'quantity': 'min_stock'})
-                # Y necesitamos mapear de nuevo
-                for orig_col in original_columns:
-                    if orig_col.lower().strip() == 'unidades':
-                        # Buscar la columna que quedó como 'unidades' y renombrar a quantity
-                        pass
-    
-    # Mejor solución: revisar si tenemos UNIDADES y STOCK como columnas separadas
-    # UNIDADES = quantity, STOCK = min_stock
-    
-    # ─────────────────────────────────────────────────────────
-    # PASO 6: Procesar cada fila
+    # PASO 5: Procesar cada fila
     # ─────────────────────────────────────────────────────────
     
     products = []
     
     for index, row in df.iterrows():
-        row_num = index + 2  # +2 porque Excel empieza en 1 y hay header
+        row_num = index + 2
         
         # Validar SKU
-        sku = str(row.get('sku', '')).strip()
-        if not sku or sku == 'nan':
+        sku = get_cell_value(row, 'sku', '')
+        if not sku:
             errors.append(f'Fila {row_num}: SKU vacío, se omitió')
             continue
         
         # Validar nombre
-        name = str(row.get('name', '')).strip()
-        if not name or name == 'nan':
+        name = get_cell_value(row, 'name', '')
+        if not name:
             errors.append(f'Fila {row_num}: Nombre vacío, se omitió')
             continue
         
         # Validar precio
-        try:
-            price = float(row.get('price', 0))
-            if price < 0:
-                errors.append(f'Fila {row_num}: Precio negativo, se puso 0')
-                price = 0
-        except (ValueError, TypeError):
-            errors.append(f'Fila {row_num}: Precio inválido, se puso 0')
+        price = get_cell_value(row, 'price', 0, value_type='float')
+        if price < 0:
+            errors.append(f'Fila {row_num}: Precio negativo, se puso 0')
             price = 0
         
         # Crear diccionario del producto
         product = {
-            'sku': sku.upper(),
-            'name': name,
-            'price': price
+            'sku': str(sku).strip().upper(),
+            'name': str(name).strip(),
+            'price': price,
+            'description': get_cell_value(row, 'description', None),
+            'cost': get_cell_value(row, 'cost', None, value_type='float'),
+            'quantity': get_cell_value(row, 'quantity', 0, value_type='int'),
+            'min_stock': get_cell_value(row, 'min_stock', 5, value_type='int'),
+            'category': get_cell_value(row, 'category', None),
+            'brand': get_cell_value(row, 'brand', None),
+            'image_url': get_cell_value(row, 'image_url', None),
         }
-        
-        # Agregar campos opcionales
-        product['description'] = safe_string(row.get('description'))
-        product['cost'] = safe_float(row.get('cost'))
-        product['quantity'] = safe_int(row.get('quantity'), default=0)
-        product['min_stock'] = safe_int(row.get('min_stock'), default=5)
-        product['category'] = safe_string(row.get('category'))
-        product['brand'] = safe_string(row.get('brand'))
-        product['image_url'] = safe_string(row.get('image_url'))
         
         products.append(product)
     
@@ -292,43 +245,47 @@ def read_import_file(file: FileStorage) -> Tuple[List[Dict], List[str]]:
 
 
 # ═══════════════════════════════════════════════════════════
-# FUNCIONES AUXILIARES
+# FUNCIÓN: OBTENER VALOR DE CELDA DE FORMA SEGURA
 # ═══════════════════════════════════════════════════════════
 
-def safe_string(value) -> str:
-    """Convierte un valor a string de forma segura."""
-    if value is None:
-        return None
+def get_cell_value(row, column_name: str, default, value_type: str = 'string'):
+    """
+    Obtiene el valor de una celda de forma segura.
     
-    if pd.isna(value):
-        return None
+    Maneja casos especiales como:
+    - Columna no existe
+    - Valor es NaN
+    - Valor es Serie (columna duplicada)
+    """
     
-    text = str(value).strip()
-    
-    if text.lower() == 'nan' or text == '':
-        return None
-    
-    return text
-
-
-def safe_float(value, default: float = None) -> float:
-    """Convierte un valor a float de forma segura."""
-    if value is None or pd.isna(value):
+    # Si la columna no existe, retornar default
+    if column_name not in row.index:
         return default
     
+    value = row[column_name]
+    
+    # Si es una Serie (columna duplicada), tomar el primer valor
+    if isinstance(value, pd.Series):
+        value = value.iloc[0]
+    
+    # Si es NaN o None, retornar default
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return default
+    
+    # Convertir string 'nan' a default
+    if isinstance(value, str) and value.lower().strip() == 'nan':
+        return default
+    
+    # Convertir según el tipo
     try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
-
-
-def safe_int(value, default: int = 0) -> int:
-    """Convierte un valor a entero de forma segura."""
-    if value is None or pd.isna(value):
-        return default
-    
-    try:
-        return int(float(value))
+        if value_type == 'int':
+            return int(float(value))
+        elif value_type == 'float':
+            return float(value)
+        else:
+            # String
+            result = str(value).strip()
+            return result if result else default
     except (ValueError, TypeError):
         return default
 
@@ -343,25 +300,23 @@ def get_template_columns() -> Dict:
         'required': REQUIRED_COLUMNS,
         'optional': OPTIONAL_COLUMNS,
         'accepted_names': {
-            'sku': ['sku', 'SKU', 'codigo', 'código', 'Variant SKU'],
-            'name': ['name', 'nombre', 'NOMBRE', 'Title', 'producto'],
-            'price': ['price', 'precio', 'PRECIO', 'Variant Price'],
-            'cost': ['cost', 'costo', 'COSTO', 'Cost per item'],
-            'quantity': ['quantity', 'unidades', 'UNIDADES', 'stock', 'inventario'],
-            'min_stock': ['min_stock', 'STOCK', 'stock minimo'],
-            'category': ['category', 'categoria', 'CATEGORIA', 'categoría'],
-            'brand': ['brand', 'marca', 'MARCA', 'vendor'],
+            'sku': ['sku', 'SKU', 'codigo', 'código'],
+            'name': ['name', 'nombre', 'NOMBRE', 'Title'],
+            'price': ['price', 'precio', 'PRECIO'],
+            'cost': ['cost', 'costo', 'COSTO'],
+            'quantity': ['quantity', 'unidades', 'UNIDADES'],
+            'min_stock': ['min_stock', 'stock', 'STOCK'],
+            'category': ['category', 'categoria', 'CATEGORIA'],
+            'brand': ['brand', 'marca', 'MARCA'],
         },
         'example': {
             'sku': 'PROD-001',
             'name': 'Producto de Ejemplo',
             'price': 99.99,
-            'description': 'Descripción del producto',
             'cost': 50.00,
             'quantity': 100,
             'min_stock': 10,
             'category': 'Electrónicos',
             'brand': 'MiMarca',
-            'image_url': 'https://ejemplo.com/imagen.jpg'
         }
     }
