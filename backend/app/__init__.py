@@ -22,17 +22,6 @@ jwt = JWTManager()
 def create_app(config_class=None):
     """
     Application Factory - Crea y configura la aplicación Flask.
-    
-    ¿Por qué usamos este patrón?
-    1. Permite crear múltiples instancias (útil para testing)
-    2. Configuración flexible según el entorno
-    3. Evita imports circulares
-    
-    Args:
-        config_class: Clase de configuración a usar (opcional)
-    
-    Returns:
-        app: Instancia de Flask configurada
     """
     
     # Crear la aplicación Flask
@@ -59,11 +48,12 @@ def create_app(config_class=None):
     # REGISTRAR BLUEPRINTS (RUTAS)
     # ═══════════════════════════════════════════════════════════
     
-    from app.routes import auth_routes, inventory_routes, import_routes
+    from app.routes import auth_routes, inventory_routes, import_routes, shopify_routes
     
     app.register_blueprint(auth_routes.bp)        # /api/auth/*
     app.register_blueprint(inventory_routes.bp)   # /api/inventory/*
     app.register_blueprint(import_routes.bp)      # /api/import/*
+    app.register_blueprint(shopify_routes.bp)     # /api/shopify/*
     
     # Ruta de health check
     @app.route('/api/health')
@@ -72,7 +62,6 @@ def create_app(config_class=None):
     
     # Importar modelos y crear tablas en desarrollo
     with app.app_context():
-        # Importar TODOS los modelos para que SQLAlchemy los registre
         from app.models import User, Product
         db.create_all()
     
