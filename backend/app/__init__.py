@@ -37,7 +37,7 @@ def create_app(config_class=None):
     migrate.init_app(app, db)
     jwt.init_app(app)
     
-    # Configurar CORS
+    # Configurar CORS (permitir cookies/credentials para OAuth)
     CORS(app, 
          resources={r"/api/*": {"origins": [app.config['FRONTEND_URL']]}},
          supports_credentials=True,
@@ -62,7 +62,7 @@ def create_app(config_class=None):
     
     # Importar modelos y crear tablas en desarrollo
     with app.app_context():
-        from app.models import User, Product
+        from app.models import User, Product, PlatformConnection
         db.create_all()
     
     return app

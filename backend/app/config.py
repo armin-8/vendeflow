@@ -19,6 +19,11 @@ class Config:
     # Flask
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-cambiar')
     
+    # Sessions (para OAuth)
+    SESSION_TYPE = 'filesystem'
+    SESSION_PERMANENT = False
+    PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)
+    
     # JWT
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'jwt-dev-secret-cambiar')
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
@@ -29,6 +34,12 @@ class Config:
     
     # CORS
     FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+    
+    # Shopify OAuth
+    SHOPIFY_API_KEY = os.getenv('SHOPIFY_API_KEY')
+    SHOPIFY_API_SECRET = os.getenv('SHOPIFY_API_SECRET')
+    SHOPIFY_SCOPES = os.getenv('SHOPIFY_SCOPES', 'read_products,write_products,read_inventory,write_inventory')
+    SHOPIFY_REDIRECT_URI = os.getenv('SHOPIFY_REDIRECT_URI', 'http://localhost:5001/api/shopify/callback')
 
 
 class DevelopmentConfig(Config):

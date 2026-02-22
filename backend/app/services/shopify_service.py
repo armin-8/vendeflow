@@ -1,90 +1,182 @@
 """
-VendeFlow - Servicio de Shopify
-================================
+VendeFlow - Servicio de Shopify con OAuth
+==========================================
 
-Este servicio maneja la comunicación con la API de Shopify.
+Este servicio maneja:
+1. Flujo OAuth para conectar tiendas
+2. Comunicación con la API de Shopify
+3. Sincronización de productos e inventario
 
-ENDPOINTS QUE USAMOS:
----------------------
+FLUJO OAUTH:
+------------
+1. get_auth_url() → URL para redirigir al usuario a Shopify
+2. exchange_code_for_token() → Intercambiar código por access_token
+3. Guardar token en PlatformConnection
+
+ENDPOINTS DE SHOPIFY QUE USAMOS:
+---------------------------------
 - GET  /products.json         → Obtener productos
 - GET  /inventory_levels.json → Obtener niveles de inventario
 - POST /inventory_levels/set  → Actualizar inventario
-
-AUTENTICACIÓN:
---------------
-Shopify usa un Access Token que se envía en el header:
-X-Shopify-Access-Token: {token}
-
-ESTRUCTURA DE PRODUCTO EN SHOPIFY:
-----------------------------------
-{
-    "id": 123456789,
-    "title": "Cámara Sony",
-    "variants": [
-        {
-            "id": 987654321,
-            "sku": "CAM-001",
-            "price": "999.99",
-            "inventory_item_id": 111222333,
-            "inventory_quantity": 10
-        }
-    ]
-}
-
-Nota: Un producto puede tener múltiples variantes (tallas, colores, etc.)
-Cada variante tiene su propio SKU e inventario.
 """
 
 import os
+import hmac
+import hashlib
 import requests
 from typing import List, Dict, Optional, Tuple
+from urllib.parse import urlencode
 
 
 class ShopifyService:
     """
-    Servicio para interactuar con la API de Shopify.
+    Servicio para interactuar con la API de Shopify usando OAuth.
     """
     
     def __init__(self):
         """
-        Inicializa el servicio con las credenciales del .env
+        Inicializa el servicio con las credenciales OAuth del .env
         """
-        self.store_name = os.getenv('SHOPIFY_STORE_NAME')
-        self.access_token = os.getenv('SHOPIFY_ACCESS_TOKEN')
-        self.api_version = '2024-01'  # Versión de la API
-        
-        # URL base de la API
-        self.base_url = f"https://{self.store_name}.myshopify.com/admin/api/{self.api_version}"
-        
-        # Headers para todas las peticiones
-        self.headers = {
-            'X-Shopify-Access-Token': self.access_token,
-            'Content-Type': 'application/json'
-        }
+        self.api_key = os.getenv('SHOPIFY_API_KEY')
+        self.api_secret = os.getenv('SHOPIFY_API_SECRET')
+        self.scopes = os.getenv('SHOPIFY_SCOPES', 'read_products,write_products,read_inventory,write_inventory')
+        self.redirect_uri = os.getenv('SHOPIFY_REDIRECT_URI', 'http://localhost:5001/api/shopify/callback')
+        self.api_version = '2024-01'
     
     # ═══════════════════════════════════════════════════════════
-    # VERIFICAR CONEXIÓN
+    # OAUTH: GENERAR URL DE AUTORIZACIÓN
     # ═══════════════════════════════════════════════════════════
     
-    def test_connection(self) -> Tuple[bool, str]:
+    def get_auth_url(self, shop_name: str, state: str) -> str:
         """
-        Prueba la conexión con Shopify.
+        Genera la URL para redirigir al usuario a Shopify para autorización.
+        
+        Args:
+            shop_name: Nombre de la tienda (ej: 'ra-outdoorstore')
+            state: Token único para prevenir CSRF (lo generamos nosotros)
         
         Returns:
-            Tuple[bool, str]: (éxito, mensaje)
+            URL completa para redirigir al usuario
+        
+        Ejemplo:
+            url = get_auth_url('mi-tienda', 'abc123')
+            # Redirigir usuario a esta URL
         """
+        params = {
+            'client_id': self.api_key,
+            'scope': self.scopes,
+            'redirect_uri': self.redirect_uri,
+            'state': state,
+        }
+        
+        # Limpiar nombre de tienda (quitar .myshopify.com si lo incluye)
+        shop_name = shop_name.replace('.myshopify.com', '').strip()
+        
+        return f"https://{shop_name}.myshopify.com/admin/oauth/authorize?{urlencode(params)}"
+    
+    # ═══════════════════════════════════════════════════════════
+    # OAUTH: INTERCAMBIAR CÓDIGO POR TOKEN
+    # ═══════════════════════════════════════════════════════════
+    
+    def exchange_code_for_token(self, shop_name: str, code: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Intercambia el código de autorización por un access token.
+        
+        Args:
+            shop_name: Nombre de la tienda
+            code: Código recibido de Shopify después de autorizar
+        
+        Returns:
+            Tuple[access_token, scope, error]
+        """
+        shop_name = shop_name.replace('.myshopify.com', '').strip()
+        
+        url = f"https://{shop_name}.myshopify.com/admin/oauth/access_token"
+        
+        payload = {
+            'client_id': self.api_key,
+            'client_secret': self.api_secret,
+            'code': code,
+        }
+        
         try:
-            # Intentamos obtener info de la tienda
-            response = requests.get(
-                f"{self.base_url}/shop.json",
-                headers=self.headers,
-                timeout=10
-            )
+            response = requests.post(url, json=payload, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                access_token = data.get('access_token')
+                scope = data.get('scope')
+                return access_token, scope, None
+            else:
+                return None, None, f"Error {response.status_code}: {response.text}"
+        
+        except requests.exceptions.RequestException as e:
+            return None, None, f"Error de conexión: {str(e)}"
+    
+    # ═══════════════════════════════════════════════════════════
+    # OAUTH: VERIFICAR HMAC (SEGURIDAD)
+    # ═══════════════════════════════════════════════════════════
+    
+    def verify_hmac(self, query_params: dict) -> bool:
+        """
+        Verifica que la solicitud viene realmente de Shopify.
+        
+        Shopify firma las solicitudes con HMAC. Verificamos la firma
+        para asegurarnos de que no es un ataque.
+        
+        Args:
+            query_params: Parámetros de la URL de callback
+        
+        Returns:
+            True si la firma es válida
+        """
+        hmac_value = query_params.get('hmac', '')
+        
+        # Crear copia sin el hmac
+        params = {k: v for k, v in query_params.items() if k != 'hmac'}
+        
+        # Ordenar y crear string
+        sorted_params = '&'.join([f"{k}={v}" for k, v in sorted(params.items())])
+        
+        # Calcular HMAC
+        calculated_hmac = hmac.new(
+            self.api_secret.encode('utf-8'),
+            sorted_params.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        return hmac.compare_digest(calculated_hmac, hmac_value)
+    
+    # ═══════════════════════════════════════════════════════════
+    # API: VERIFICAR CONEXIÓN
+    # ═══════════════════════════════════════════════════════════
+    
+    def test_connection(self, shop_name: str, access_token: str) -> Tuple[bool, str]:
+        """
+        Prueba la conexión con una tienda de Shopify.
+        
+        Args:
+            shop_name: Nombre de la tienda
+            access_token: Token de acceso
+        
+        Returns:
+            Tuple[éxito, mensaje]
+        """
+        shop_name = shop_name.replace('.myshopify.com', '').strip()
+        
+        url = f"https://{shop_name}.myshopify.com/admin/api/{self.api_version}/shop.json"
+        headers = {
+            'X-Shopify-Access-Token': access_token,
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
             
             if response.status_code == 200:
                 shop_data = response.json().get('shop', {})
-                shop_name = shop_data.get('name', 'Tienda')
-                return True, f"Conectado a: {shop_name}"
+                name = shop_data.get('name', 'Tienda')
+                return True, f"Conectado a: {name}"
             else:
                 return False, f"Error {response.status_code}: {response.text}"
         
@@ -92,29 +184,34 @@ class ShopifyService:
             return False, f"Error de conexión: {str(e)}"
     
     # ═══════════════════════════════════════════════════════════
-    # OBTENER PRODUCTOS
+    # API: OBTENER PRODUCTOS
     # ═══════════════════════════════════════════════════════════
     
-    def get_products(self, limit: int = 250) -> Tuple[List[Dict], Optional[str]]:
+    def get_products(self, shop_name: str, access_token: str, limit: int = 250) -> Tuple[List[Dict], Optional[str]]:
         """
-        Obtiene todos los productos de Shopify.
-        
-        ¿POR QUÉ 250?
-        Shopify limita a 250 productos por petición.
-        Para tiendas con más productos, hay que paginar.
+        Obtiene todos los productos de una tienda Shopify.
         
         Args:
-            limit: Número máximo de productos (max 250)
+            shop_name: Nombre de la tienda
+            access_token: Token de acceso
+            limit: Máximo por página (max 250)
         
         Returns:
-            Tuple[List[Dict], Optional[str]]: (productos, error)
+            Tuple[productos, error]
         """
+        shop_name = shop_name.replace('.myshopify.com', '').strip()
+        
+        headers = {
+            'X-Shopify-Access-Token': access_token,
+            'Content-Type': 'application/json'
+        }
+        
         try:
             products = []
-            url = f"{self.base_url}/products.json?limit={limit}"
+            url = f"https://{shop_name}.myshopify.com/admin/api/{self.api_version}/products.json?limit={limit}"
             
             while url:
-                response = requests.get(url, headers=self.headers, timeout=30)
+                response = requests.get(url, headers=headers, timeout=30)
                 
                 if response.status_code != 200:
                     return [], f"Error {response.status_code}: {response.text}"
@@ -122,10 +219,9 @@ class ShopifyService:
                 data = response.json()
                 products.extend(data.get('products', []))
                 
-                # Verificar si hay más páginas (paginación de Shopify)
+                # Paginación
                 link_header = response.headers.get('Link', '')
                 if 'rel="next"' in link_header:
-                    # Extraer URL de la siguiente página
                     for link in link_header.split(','):
                         if 'rel="next"' in link:
                             url = link.split(';')[0].strip('<> ')
@@ -139,47 +235,30 @@ class ShopifyService:
             return [], f"Error de conexión: {str(e)}"
     
     # ═══════════════════════════════════════════════════════════
-    # CONVERTIR PRODUCTOS DE SHOPIFY A FORMATO VENDEFLOW
+    # API: NORMALIZAR PRODUCTOS
     # ═══════════════════════════════════════════════════════════
     
     def normalize_products(self, shopify_products: List[Dict]) -> List[Dict]:
         """
         Convierte productos de Shopify al formato de VendeFlow.
-        
-        IMPORTANTE:
-        - Un producto de Shopify puede tener múltiples variantes
-        - Cada variante es un "producto" en VendeFlow
-        - Usamos el SKU de la variante como identificador
-        
-        Args:
-            shopify_products: Lista de productos de Shopify
-        
-        Returns:
-            List[Dict]: Lista de productos en formato VendeFlow
         """
         normalized = []
         
         for product in shopify_products:
-            # Datos comunes del producto
             product_title = product.get('title', '')
             product_description = product.get('body_html', '')
-            product_vendor = product.get('vendor', '')  # Marca
-            product_type = product.get('product_type', '')  # Categoría
+            product_vendor = product.get('vendor', '')
+            product_type = product.get('product_type', '')
             
-            # Imagen principal (si existe)
             images = product.get('images', [])
             image_url = images[0].get('src', '') if images else None
             
-            # Procesar cada variante
             for variant in product.get('variants', []):
                 sku = variant.get('sku', '').strip()
                 
-                # Si no tiene SKU, saltar esta variante
                 if not sku:
                     continue
                 
-                # Crear nombre del producto
-                # Si tiene variante (talla, color), agregarlo al nombre
                 variant_title = variant.get('title', '')
                 if variant_title and variant_title != 'Default Title':
                     name = f"{product_title} - {variant_title}"
@@ -196,7 +275,6 @@ class ShopifyService:
                     'category': product_type,
                     'brand': product_vendor,
                     'image_url': image_url,
-                    # IDs de Shopify para sincronización
                     'shopify_product_id': product.get('id'),
                     'shopify_variant_id': variant.get('id'),
                     'shopify_inventory_item_id': variant.get('inventory_item_id'),
@@ -207,27 +285,23 @@ class ShopifyService:
         return normalized
     
     # ═══════════════════════════════════════════════════════════
-    # OBTENER UBICACIONES DE INVENTARIO
+    # API: OBTENER UBICACIONES
     # ═══════════════════════════════════════════════════════════
     
-    def get_locations(self) -> Tuple[List[Dict], Optional[str]]:
+    def get_locations(self, shop_name: str, access_token: str) -> Tuple[List[Dict], Optional[str]]:
         """
         Obtiene las ubicaciones de inventario de Shopify.
-        
-        ¿QUÉ ES UNA UBICACIÓN?
-        En Shopify, el inventario se almacena en "ubicaciones"
-        (bodegas, tiendas físicas, etc.)
-        Necesitamos el ID de la ubicación para actualizar stock.
-        
-        Returns:
-            Tuple[List[Dict], Optional[str]]: (ubicaciones, error)
         """
+        shop_name = shop_name.replace('.myshopify.com', '').strip()
+        
+        headers = {
+            'X-Shopify-Access-Token': access_token,
+            'Content-Type': 'application/json'
+        }
+        
         try:
-            response = requests.get(
-                f"{self.base_url}/locations.json",
-                headers=self.headers,
-                timeout=10
-            )
+            url = f"https://{shop_name}.myshopify.com/admin/api/{self.api_version}/locations.json"
+            response = requests.get(url, headers=headers, timeout=10)
             
             if response.status_code != 200:
                 return [], f"Error {response.status_code}: {response.text}"
@@ -239,25 +313,27 @@ class ShopifyService:
             return [], f"Error de conexión: {str(e)}"
     
     # ═══════════════════════════════════════════════════════════
-    # ACTUALIZAR INVENTARIO
+    # API: ACTUALIZAR INVENTARIO
     # ═══════════════════════════════════════════════════════════
     
-    def update_inventory(self, inventory_item_id: int, location_id: int, quantity: int) -> Tuple[bool, str]:
+    def update_inventory(self, shop_name: str, access_token: str, 
+                        inventory_item_id: int, location_id: int, quantity: int) -> Tuple[bool, str]:
         """
         Actualiza el nivel de inventario de un producto en Shopify.
-        
-        Args:
-            inventory_item_id: ID del item de inventario (de la variante)
-            location_id: ID de la ubicación
-            quantity: Nueva cantidad
-        
-        Returns:
-            Tuple[bool, str]: (éxito, mensaje)
         """
+        shop_name = shop_name.replace('.myshopify.com', '').strip()
+        
+        headers = {
+            'X-Shopify-Access-Token': access_token,
+            'Content-Type': 'application/json'
+        }
+        
         try:
+            url = f"https://{shop_name}.myshopify.com/admin/api/{self.api_version}/inventory_levels/set.json"
+            
             response = requests.post(
-                f"{self.base_url}/inventory_levels/set.json",
-                headers=self.headers,
+                url,
+                headers=headers,
                 json={
                     'location_id': location_id,
                     'inventory_item_id': inventory_item_id,
@@ -275,9 +351,5 @@ class ShopifyService:
             return False, f"Error de conexión: {str(e)}"
 
 
-# ═══════════════════════════════════════════════════════════
-# INSTANCIA GLOBAL DEL SERVICIO
-# ═══════════════════════════════════════════════════════════
-
-# Creamos una instancia que se puede importar en otros archivos
+# Instancia global
 shopify_service = ShopifyService()
