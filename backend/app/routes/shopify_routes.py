@@ -16,7 +16,7 @@ FLUJO OAUTH:
 import os
 import secrets
 from datetime import datetime
-from flask import Blueprint, jsonify, request, redirect, session
+from flask import Blueprint, jsonify, request, redirect
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
@@ -37,17 +37,6 @@ bp = Blueprint('shopify', __name__, url_prefix='/api/shopify')
 def connect_shopify():
     """
     Inicia el flujo OAuth con Shopify.
-    
-    El frontend llama a este endpoint con el nombre de la tienda,
-    y nosotros redirigimos al usuario a Shopify para autorizar.
-    
-    QUERY PARAMS:
-    -------------
-    shop: Nombre de la tienda (ej: 'ra-outdoorstore' o 'ra-outdoorstore.myshopify.com')
-    
-    RESPONSE:
-    ---------
-    Redirección a Shopify o JSON con URL de autorización
     """
     user_id = get_jwt_identity()
     shop = request.args.get('shop', '').strip()
@@ -61,13 +50,10 @@ def connect_shopify():
     # Limpiar nombre de tienda
     shop = shop.replace('.myshopify.com', '').replace('https://', '').replace('http://', '')
     
-    # Generar state token para seguridad (prevenir CSRF)
-    state = secrets.token_urlsafe(32)
-    
-    # Guardar en session para verificar después
-    session['shopify_oauth_state'] = state
-    session['shopify_oauth_shop'] = shop
-    session['shopify_oauth_user_id'] = user_id
+    # Codificar user_id y shop en el state (para no depender de sesiones)
+    # Formato: random_token:user_id:shop
+    random_token = secrets.token_urlsafe(16)
+    state = f"{random_token}:{user_id}:{shop}"
     
     # Obtener URL de autorización
     auth_url = shopify_service.get_auth_url(shop, state)
@@ -88,55 +74,42 @@ def connect_shopify():
 def shopify_callback():
     """
     Shopify redirige aquí después de que el usuario autoriza.
-    
-    QUERY PARAMS (de Shopify):
-    --------------------------
-    code: Código de autorización
-    shop: Nombre de la tienda
-    state: Token de seguridad (debe coincidir con el que enviamos)
-    hmac: Firma de Shopify
-    
-    PROCESO:
-    --------
-    1. Verificar state (seguridad)
-    2. Intercambiar código por access_token
-    3. Guardar conexión en base de datos
-    4. Redirigir al frontend
     """
     # Obtener parámetros
     code = request.args.get('code')
     shop = request.args.get('shop', '').replace('.myshopify.com', '')
     state = request.args.get('state')
     
-    # Obtener datos de session
-    saved_state = session.get('shopify_oauth_state')
-    saved_shop = session.get('shopify_oauth_shop')
-    user_id = session.get('shopify_oauth_user_id')
-    
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
     
-    # Verificar state (seguridad CSRF)
-    if not state or state != saved_state:
+    # Decodificar state (formato: random_token:user_id:shop)
+    if not state:
+        return redirect(f"{frontend_url}/integrations?error=invalid_state")
+    
+    try:
+        state_parts = state.split(':')
+        if len(state_parts) != 3:
+            raise ValueError("Invalid state format")
+        _, user_id, saved_shop = state_parts
+    except:
         return redirect(f"{frontend_url}/integrations?error=invalid_state")
     
     # Verificar shop
     if not shop or shop != saved_shop:
         return redirect(f"{frontend_url}/integrations?error=invalid_shop")
     
-    # Verificar que tenemos user_id
-    if not user_id:
-        return redirect(f"{frontend_url}/integrations?error=session_expired")
-    
     # Intercambiar código por token
     access_token, scope, error = shopify_service.exchange_code_for_token(shop, code)
     
     if error:
+        print(f"Token exchange error: {error}")
         return redirect(f"{frontend_url}/integrations?error=token_exchange_failed")
     
     # Verificar que el token funciona
     success, message = shopify_service.test_connection(shop, access_token)
     
     if not success:
+        print(f"Connection test failed: {message}")
         return redirect(f"{frontend_url}/integrations?error=connection_test_failed")
     
     # Guardar conexión en base de datos
@@ -167,17 +140,14 @@ def shopify_callback():
             db.session.add(connection)
         
         db.session.commit()
-        
-        # Limpiar session
-        session.pop('shopify_oauth_state', None)
-        session.pop('shopify_oauth_shop', None)
-        session.pop('shopify_oauth_user_id', None)
+        print(f"Connection saved for user {user_id}, shop {shop}")
         
         # Redirigir al frontend con éxito
         return redirect(f"{frontend_url}/integrations?success=shopify_connected&shop={shop}")
     
     except Exception as e:
         db.session.rollback()
+        print(f"Database error: {e}")
         return redirect(f"{frontend_url}/integrations?error=database_error")
 
 
@@ -190,15 +160,6 @@ def shopify_callback():
 def check_status():
     """
     Verifica si el usuario tiene una tienda Shopify conectada.
-    
-    RESPONSE:
-    ---------
-    {
-        "connected": true/false,
-        "store_name": "ra-outdoorstore",
-        "connected_at": "2024-01-15T10:30:00",
-        "last_synced_at": "2024-01-15T12:00:00"
-    }
     """
     user_id = get_jwt_identity()
     
