@@ -21,13 +21,14 @@ from app.models.product import Product
 from app.schemas.product_schema import ProductCreate, ProductUpdate
 
 bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
+bp.strict_slashes = False  # Evita redirects por trailing slash
 
 
 # ═══════════════════════════════════════════════════════════
 # LISTAR PRODUCTOS
 # ═══════════════════════════════════════════════════════════
 
-@bp.route('/', methods=['GET'])
+@bp.route('', methods=['GET'])
 @jwt_required()
 def get_products():
     """
@@ -92,7 +93,7 @@ def get_products():
 # CREAR PRODUCTO
 # ═══════════════════════════════════════════════════════════
 
-@bp.route('/', methods=['POST'])
+@bp.route('', methods=['POST'])
 @jwt_required()
 def create_product():
     """
