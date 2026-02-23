@@ -23,7 +23,7 @@ function Layout() {
       {/* Footer */}
       <footer className="bg-gray-800 text-white py-6">
         <div className="container mx-auto px-4 text-center">
-          <p>&copy; 2024 VendeFlow. Todos los derechos reservados.</p>
+          <p>&copy; 2026 VendeFlow.</p>
           <p className="text-gray-400 text-sm mt-2">
             Gestión de inventario multi-canal para LATAM
           </p>
