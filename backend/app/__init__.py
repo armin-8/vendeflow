@@ -27,6 +27,9 @@ def create_app(config_class=None):
     # Crear la aplicación Flask
     app = Flask(__name__)
     
+    # Evitar redirects automáticos por trailing slash
+    app.url_map.strict_slashes = False
+    
     # Cargar configuración
     if config_class is None:
         config_class = get_config()
