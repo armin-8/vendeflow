@@ -50,17 +50,6 @@ class ShopifyService:
     def get_auth_url(self, shop_name: str, state: str) -> str:
         """
         Genera la URL para redirigir al usuario a Shopify para autorización.
-        
-        Args:
-            shop_name: Nombre de la tienda (ej: 'ra-outdoorstore')
-            state: Token único para prevenir CSRF (lo generamos nosotros)
-        
-        Returns:
-            URL completa para redirigir al usuario
-        
-        Ejemplo:
-            url = get_auth_url('mi-tienda', 'abc123')
-            # Redirigir usuario a esta URL
         """
         params = {
             'client_id': self.api_key,
@@ -69,7 +58,6 @@ class ShopifyService:
             'state': state,
         }
         
-        # Limpiar nombre de tienda (quitar .myshopify.com si lo incluye)
         shop_name = shop_name.replace('.myshopify.com', '').strip()
         
         return f"https://{shop_name}.myshopify.com/admin/oauth/authorize?{urlencode(params)}"
@@ -81,13 +69,6 @@ class ShopifyService:
     def exchange_code_for_token(self, shop_name: str, code: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Intercambia el código de autorización por un access token.
-        
-        Args:
-            shop_name: Nombre de la tienda
-            code: Código recibido de Shopify después de autorizar
-        
-        Returns:
-            Tuple[access_token, scope, error]
         """
         shop_name = shop_name.replace('.myshopify.com', '').strip()
         
@@ -120,25 +101,12 @@ class ShopifyService:
     def verify_hmac(self, query_params: dict) -> bool:
         """
         Verifica que la solicitud viene realmente de Shopify.
-        
-        Shopify firma las solicitudes con HMAC. Verificamos la firma
-        para asegurarnos de que no es un ataque.
-        
-        Args:
-            query_params: Parámetros de la URL de callback
-        
-        Returns:
-            True si la firma es válida
         """
         hmac_value = query_params.get('hmac', '')
         
-        # Crear copia sin el hmac
         params = {k: v for k, v in query_params.items() if k != 'hmac'}
-        
-        # Ordenar y crear string
         sorted_params = '&'.join([f"{k}={v}" for k, v in sorted(params.items())])
         
-        # Calcular HMAC
         calculated_hmac = hmac.new(
             self.api_secret.encode('utf-8'),
             sorted_params.encode('utf-8'),
@@ -154,13 +122,6 @@ class ShopifyService:
     def test_connection(self, shop_name: str, access_token: str) -> Tuple[bool, str]:
         """
         Prueba la conexión con una tienda de Shopify.
-        
-        Args:
-            shop_name: Nombre de la tienda
-            access_token: Token de acceso
-        
-        Returns:
-            Tuple[éxito, mensaje]
         """
         shop_name = shop_name.replace('.myshopify.com', '').strip()
         
@@ -190,14 +151,6 @@ class ShopifyService:
     def get_products(self, shop_name: str, access_token: str, limit: int = 250) -> Tuple[List[Dict], Optional[str]]:
         """
         Obtiene todos los productos de una tienda Shopify.
-        
-        Args:
-            shop_name: Nombre de la tienda
-            access_token: Token de acceso
-            limit: Máximo por página (max 250)
-        
-        Returns:
-            Tuple[productos, error]
         """
         shop_name = shop_name.replace('.myshopify.com', '').strip()
         
@@ -254,7 +207,9 @@ class ShopifyService:
             image_url = images[0].get('src', '') if images else None
             
             for variant in product.get('variants', []):
-                sku = variant.get('sku', '').strip()
+                # Manejar SKU que puede ser None
+                sku = variant.get('sku') or ''
+                sku = sku.strip() if isinstance(sku, str) else ''
                 
                 if not sku:
                     continue
@@ -269,9 +224,9 @@ class ShopifyService:
                     'sku': sku.upper(),
                     'name': name,
                     'description': product_description,
-                    'price': float(variant.get('price', 0)),
+                    'price': float(variant.get('price', 0) or 0),
                     'cost': float(variant.get('cost', 0) or 0),
-                    'quantity': variant.get('inventory_quantity', 0),
+                    'quantity': variant.get('inventory_quantity', 0) or 0,
                     'category': product_type,
                     'brand': product_vendor,
                     'image_url': image_url,
