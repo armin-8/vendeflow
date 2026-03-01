@@ -377,8 +377,17 @@ def import_from_shopify():
 def sync_to_shopify():
     """
     Sincroniza el inventario de VendeFlow hacia Shopify.
+    
+    BODY (opcional):
+    {
+        "sku": "ABC-123"  // Si se proporciona, solo sincroniza ese SKU
+    }
     """
     user_id = get_jwt_identity()
+    
+    # Obtener SKU específico si se proporcionó
+    data = request.get_json() or {}
+    single_sku = data.get('sku')
     
     # Obtener conexión
     connection = PlatformConnection.query.filter_by(
@@ -408,16 +417,22 @@ def sync_to_shopify():
     location_id = locations[0].get('id')
     
     # Obtener productos vinculados
-    products = Product.query.filter(
+    query = Product.query.filter(
         Product.user_id == int(user_id),
         Product.is_active == True,
         Product.shopify_id != None
-    ).all()
+    )
+    
+    # Si hay SKU específico, filtrar solo ese
+    if single_sku:
+        query = query.filter(Product.sku == single_sku.upper())
+    
+    products = query.all()
     
     if not products:
         return jsonify({
             'success': False,
-            'error': 'No hay productos vinculados con Shopify'
+            'error': f'No se encontró el producto con SKU: {single_sku}' if single_sku else 'No hay productos vinculados con Shopify'
         }), 400
     
     # Mapear variant_id -> inventory_item_id

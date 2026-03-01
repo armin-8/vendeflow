@@ -2,11 +2,6 @@
 VendeFlow - Schemas de Producto
 ===============================
 Define la estructura y validación de datos para productos.
-
-RECUERDA:
-- Pydantic valida automáticamente los datos
-- Si algo no cumple, lanza error descriptivo
-- Evita validaciones manuales repetitivas
 """
 
 from datetime import datetime
@@ -21,34 +16,31 @@ from pydantic import BaseModel, Field, field_validator
 class ProductCreate(BaseModel):
     """
     Schema para crear un nuevo producto.
-    
-    Campos requeridos: sku, name, price
-    Campos opcionales: description, cost, quantity, etc.
     """
     
     sku: str = Field(
         ...,
         min_length=1,
-        max_length=50,
+        max_length=100,
         description="Código único del producto (SKU)"
     )
     
     name: str = Field(
         ...,
         min_length=1,
-        max_length=200,
+        max_length=500,
         description="Nombre del producto"
     )
     
     description: Optional[str] = Field(
         None,
-        max_length=5000,
+        max_length=50000,  # HTML de Shopify puede ser largo
         description="Descripción del producto"
     )
     
     price: float = Field(
         ...,
-        ge=0,  # greater or equal to 0
+        ge=0,
         description="Precio de venta"
     )
     
@@ -72,35 +64,33 @@ class ProductCreate(BaseModel):
     
     category: Optional[str] = Field(
         None,
-        max_length=100,
+        max_length=200,
         description="Categoría del producto"
     )
     
     brand: Optional[str] = Field(
         None,
-        max_length=100,
+        max_length=200,
         description="Marca del producto"
     )
     
     image_url: Optional[str] = Field(
         None,
-        max_length=500,
+        max_length=2000,  # URLs de Shopify/CDN pueden ser largas
         description="URL de la imagen del producto"
     )
     
-    # Validador para limpiar espacios
     @field_validator('sku', 'name')
     @classmethod
     def strip_whitespace(cls, v: str) -> str:
         """Elimina espacios al inicio y final."""
         return v.strip()
     
-    # Validador para SKU (solo alfanuméricos y guiones)
     @field_validator('sku')
     @classmethod
     def validate_sku(cls, v: str) -> str:
         """Valida formato del SKU."""
-        v = v.upper()  # Convertir a mayúsculas
+        v = v.upper()
         allowed = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_')
         if not all(c in allowed for c in v):
             raise ValueError('SKU solo puede contener letras, números, guiones y guiones bajos')
@@ -114,21 +104,19 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     """
     Schema para actualizar un producto.
-    
-    Todos los campos son opcionales porque el usuario
-    puede querer actualizar solo algunos.
+    Todos los campos son opcionales.
     """
     
-    sku: Optional[str] = Field(None, min_length=1, max_length=50)
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=5000)
+    sku: Optional[str] = Field(None, min_length=1, max_length=100)
+    name: Optional[str] = Field(None, min_length=1, max_length=500)
+    description: Optional[str] = Field(None, max_length=50000)
     price: Optional[float] = Field(None, ge=0)
     cost: Optional[float] = Field(None, ge=0)
     quantity: Optional[int] = Field(None, ge=0)
     min_stock: Optional[int] = Field(None, ge=0)
-    category: Optional[str] = Field(None, max_length=100)
-    brand: Optional[str] = Field(None, max_length=100)
-    image_url: Optional[str] = Field(None, max_length=500)
+    category: Optional[str] = Field(None, max_length=200)
+    brand: Optional[str] = Field(None, max_length=200)
+    image_url: Optional[str] = Field(None, max_length=2000)
     is_active: Optional[bool] = None
     
     @field_validator('sku')
@@ -177,7 +165,6 @@ class ProductResponse(BaseModel):
     last_synced_at: Optional[datetime] = None
     
     class Config:
-        """Configuración del schema."""
         from_attributes = True
 
 
