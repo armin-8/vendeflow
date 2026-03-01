@@ -166,6 +166,62 @@ export const inventoryService = {
 }
 
 // ═══════════════════════════════════════════════════════════
+// SERVICIOS DE SHOPIFY
+// ═══════════════════════════════════════════════════════════
+
+export const shopifyService = {
+  /**
+   * Obtener estado de conexión con Shopify.
+   */
+  getStatus: async () => {
+    return request('/shopify/status')
+  },
+  
+  /**
+   * Iniciar conexión OAuth con Shopify.
+   * @param {string} shopName - Nombre de la tienda (sin .myshopify.com)
+   */
+  connect: async (shopName) => {
+    return request(`/shopify/connect?shop=${encodeURIComponent(shopName)}`)
+  },
+  
+  /**
+   * Desconectar tienda Shopify.
+   */
+  disconnect: async () => {
+    return request('/shopify/disconnect', {
+      method: 'DELETE'
+    })
+  },
+  
+  /**
+   * Obtener productos de Shopify.
+   */
+  getProducts: async () => {
+    return request('/shopify/products')
+  },
+  
+  /**
+   * Importar productos de Shopify a VendeFlow.
+   */
+  importProducts: async (updateExisting = true) => {
+    return request('/shopify/import', {
+      method: 'POST',
+      body: JSON.stringify({ update_existing: updateExisting })
+    })
+  },
+  
+  /**
+   * Sincronizar inventario de VendeFlow a Shopify.
+   */
+  syncInventory: async () => {
+    return request('/shopify/sync', {
+      method: 'POST'
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // SERVICIOS DE IMPORTACIÓN
 // ═══════════════════════════════════════════════════════════
 

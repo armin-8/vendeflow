@@ -12,9 +12,10 @@
  *   /register  → Registrarse
  * 
  * Protegidas (requieren autenticación):
- *   /dashboard → Panel principal
- *   /inventory → Lista de productos
- *   /import    → Importar desde Excel/CSV
+ *   /dashboard     → Panel principal
+ *   /inventory     → Lista de productos
+ *   /import        → Importar desde Excel/CSV
+ *   /integrations  → Conectar plataformas (Shopify, etc.)
  */
 
 import { Routes, Route } from 'react-router-dom'
@@ -29,6 +30,7 @@ import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Inventory from './pages/Inventory'
 import Import from './pages/Import'
+import Integrations from './pages/Integrations'
 import NotFound from './pages/NotFound'
 
 // Componente de ruta protegida
@@ -48,6 +50,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="import" element={<Import />} />
+          <Route path="integrations" element={<Integrations />} />
         </Route>
         
         {/* 404 */}
