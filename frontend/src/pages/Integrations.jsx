@@ -3,16 +3,19 @@
  * =====================================
  * 
  * Permite conectar y gestionar plataformas externas:
- * - Shopify
- * - Mercado Libre (próximamente)
- * - Amazon (próximamente)
+ * - Shopify       ✅ Funcional
+ * - Mercado Libre ✅ Funcional
+ * - Amazon           Próximamente
  */
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { shopifyService } from '../services/api'
+import { shopifyService, mercadoLibreService } from '../services/api'
 
-// Iconos simples como componentes
+// ═══════════════════════════════════════════════════════════
+// ICONOS
+// ═══════════════════════════════════════════════════════════
+
 const ShopifyIcon = () => (
   <svg viewBox="0 0 24 24" className="w-8 h-8" fill="currentColor">
     <path d="M15.337 3.415c-.193-.016-.374.105-.447.282l-.447 1.13c-.282-.087-.58-.15-.893-.182-.017-.614-.073-1.237-.169-1.783-.313-1.79-1.27-2.657-2.554-2.657-.073 0-.145 0-.218.008-.048-.056-.097-.113-.153-.161C10.026.052 9.533 0 8.963 0 7.225 0 5.553 1.26 4.249 3.54c-.92 1.607-1.618 3.627-1.817 5.19l-2.169.672c-.671.21-.692.231-.78.863L0 18.255l12.192 2.12L24 18.07c0-.008-7.13-14.354-8.663-14.655zM11.602 5.296l-.002.012-1.372.425c.166-.846.482-1.696.865-2.347.144-.246.345-.516.59-.721.245.73.333 1.754.004 2.631h-.085zm-1.893-2.842c.193 0 .354.032.49.097-.222.12-.433.289-.628.507-.521.575-.922 1.472-1.084 2.336l-1.155.358c.322-1.563 1.186-3.298 2.377-3.298zm-.386 9.192l-.508 1.57s-.563-.403-1.24-.403c-1.004 0-1.053.63-1.053.79 0 .862 2.27 1.194 2.27 3.227 0 1.596-1.012 2.622-2.377 2.622-1.637 0-2.473-1.02-2.473-1.02l.435-1.443s.86.74 1.586.74c.475 0 .668-.372.668-.647 0-1.13-1.863-1.18-1.863-3.036 0-1.56 1.12-3.07 3.382-3.07.872 0 1.173.258 1.173.258v.412zm2.006-6.675c-.378 0-.79.089-1.203.266l.12-.457c.23-.867.685-1.758 1.083-2.254.156-.193.38-.427.635-.579.256.828.256 2.004-.635 3.024z"/>
@@ -31,148 +34,228 @@ const AmazonIcon = () => (
   </svg>
 )
 
+// ═══════════════════════════════════════════════════════════
+// COMPONENTE PRINCIPAL
+// ═══════════════════════════════════════════════════════════
+
 export default function Integrations() {
   const [searchParams] = useSearchParams()
-  const [shopifyStatus, setShopifyStatus] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState(null)
-  const [message, setMessage] = useState(null)
-  const [shopName, setShopName] = useState('')
-  const [showConnectModal, setShowConnectModal] = useState(false)
 
-  // Verificar parámetros de URL (después del callback de OAuth)
+  // Estado de Shopify
+  const [shopifyStatus, setShopifyStatus] = useState(null)
+  const [shopifyLoading, setShopifyLoading] = useState(true)
+  const [shopifyActionLoading, setShopifyActionLoading] = useState(null)
+  const [shopName, setShopName] = useState('')
+  const [showShopifyInput, setShowShopifyInput] = useState(false)
+
+  // Estado de Mercado Libre
+  const [mlStatus, setMlStatus] = useState(null)
+  const [mlLoading, setMlLoading] = useState(true)
+  const [mlActionLoading, setMlActionLoading] = useState(null)
+
+  // Mensaje global (éxito / error)
+  const [message, setMessage] = useState(null)
+
+  // ─────────────────────────────────────────────────────────
+  // Leer parámetros del callback OAuth al cargar la página
+  //
+  // Cuando Shopify o ML redirigen de vuelta al frontend,
+  // vienen con ?success=... o ?error=... en la URL.
+  // Los capturamos aquí para mostrar el mensaje correcto.
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
     const success = searchParams.get('success')
     const error = searchParams.get('error')
     const shop = searchParams.get('shop')
+    const account = searchParams.get('account')
 
     if (success === 'shopify_connected') {
       setMessage({ type: 'success', text: `¡Tienda ${shop || 'Shopify'} conectada exitosamente!` })
+    } else if (success === 'ml_connected') {
+      setMessage({ type: 'success', text: `¡Cuenta ${account || 'Mercado Libre'} conectada exitosamente!` })
     } else if (error) {
       const errorMessages = {
-        'invalid_state': 'Error de seguridad. Intenta de nuevo.',
-        'invalid_shop': 'Tienda inválida.',
-        'token_exchange_failed': 'Error al obtener acceso. Intenta de nuevo.',
+        'invalid_state':          'Error de seguridad. Intenta de nuevo.',
+        'invalid_shop':           'Tienda inválida.',
+        'token_exchange_failed':  'Error al obtener acceso. Intenta de nuevo.',
         'connection_test_failed': 'No se pudo verificar la conexión.',
-        'database_error': 'Error al guardar. Intenta de nuevo.',
-        'session_expired': 'Sesión expirada. Intenta de nuevo.'
+        'database_error':         'Error al guardar. Intenta de nuevo.',
+        'session_expired':        'Sesión expirada. Intenta de nuevo.',
+        'ml_auth_denied':         'Cancelaste la conexión con Mercado Libre.',
+        'no_code':                'No se recibió código de autorización.',
+        'user_info_failed':       'No se pudo obtener info de tu cuenta de ML.',
       }
-      setMessage({ type: 'error', text: errorMessages[error] || 'Error desconocido' })
+      setMessage({ type: 'error', text: errorMessages[error] || `Error: ${error}` })
     }
   }, [searchParams])
 
-  // Cargar estado de conexiones
+  // ─────────────────────────────────────────────────────────
+  // Cargar estado de ambas plataformas al montar
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
     loadShopifyStatus()
+    loadMlStatus()
   }, [])
+
+  // ═══════════════════════════════════════════════════════════
+  // HANDLERS DE SHOPIFY
+  // ═══════════════════════════════════════════════════════════
 
   const loadShopifyStatus = async () => {
     try {
-      setLoading(true)
+      setShopifyLoading(true)
       const data = await shopifyService.getStatus()
       setShopifyStatus(data)
     } catch (error) {
-      console.error('Error loading Shopify status:', error)
       setShopifyStatus({ connected: false })
     } finally {
-      setLoading(false)
+      setShopifyLoading(false)
     }
   }
 
-  // Conectar Shopify
   const handleConnectShopify = async () => {
     if (!shopName.trim()) {
       setMessage({ type: 'error', text: 'Ingresa el nombre de tu tienda' })
       return
     }
-
     try {
-      setActionLoading('connect')
+      setShopifyActionLoading('connect')
       const data = await shopifyService.connect(shopName.trim())
-      
-      if (data.auth_url) {
-        // Redirigir a Shopify para autorización
-        window.location.href = data.auth_url
-      }
+      if (data.auth_url) window.location.href = data.auth_url
     } catch (error) {
       setMessage({ type: 'error', text: error.message })
-      setActionLoading(null)
+      setShopifyActionLoading(null)
     }
   }
 
-  // Desconectar Shopify
   const handleDisconnectShopify = async () => {
     if (!confirm('¿Estás seguro de desconectar esta tienda?')) return
-
     try {
-      setActionLoading('disconnect')
+      setShopifyActionLoading('disconnect')
       await shopifyService.disconnect()
       setShopifyStatus({ connected: false })
-      setMessage({ type: 'success', text: 'Tienda desconectada' })
+      setMessage({ type: 'success', text: 'Tienda Shopify desconectada' })
     } catch (error) {
       setMessage({ type: 'error', text: error.message })
     } finally {
-      setActionLoading(null)
+      setShopifyActionLoading(null)
     }
   }
 
-  // Importar productos de Shopify
   const handleImportShopify = async () => {
     try {
-      setActionLoading('import')
+      setShopifyActionLoading('import')
       const data = await shopifyService.importProducts()
-      setMessage({ 
-        type: 'success', 
-        text: `${data.created} productos creados, ${data.updated} actualizados` 
-      })
+      setMessage({ type: 'success', text: `Shopify: ${data.created} creados, ${data.updated} actualizados` })
     } catch (error) {
       setMessage({ type: 'error', text: error.message })
     } finally {
-      setActionLoading(null)
+      setShopifyActionLoading(null)
     }
   }
 
-  // Sincronizar inventario a Shopify
   const handleSyncShopify = async () => {
     try {
-      setActionLoading('sync')
+      setShopifyActionLoading('sync')
       const data = await shopifyService.syncInventory()
-      setMessage({ 
-        type: 'success', 
-        text: `${data.synced} productos sincronizados` 
-      })
+      setMessage({ type: 'success', text: `Shopify: ${data.synced} productos sincronizados` })
     } catch (error) {
       setMessage({ type: 'error', text: error.message })
     } finally {
-      setActionLoading(null)
+      setShopifyActionLoading(null)
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // HANDLERS DE MERCADO LIBRE
+  // ═══════════════════════════════════════════════════════════
+
+  const loadMlStatus = async () => {
+    try {
+      setMlLoading(true)
+      const data = await mercadoLibreService.getStatus()
+      setMlStatus(data)
+    } catch (error) {
+      setMlStatus({ connected: false })
+    } finally {
+      setMlLoading(false)
+    }
+  }
+
+  const handleConnectML = async () => {
+    try {
+      setMlActionLoading('connect')
+      const data = await mercadoLibreService.connect()
+      // El backend devuelve la URL de autorización de ML
+      // Redirigimos al usuario a esa URL (igual que Shopify)
+      if (data.auth_url) window.location.href = data.auth_url
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+      setMlActionLoading(null)
+    }
+  }
+
+  const handleDisconnectML = async () => {
+    if (!confirm('¿Estás seguro de desconectar tu cuenta de Mercado Libre?')) return
+    try {
+      setMlActionLoading('disconnect')
+      await mercadoLibreService.disconnect()
+      setMlStatus({ connected: false })
+      setMessage({ type: 'success', text: 'Cuenta de Mercado Libre desconectada' })
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+    } finally {
+      setMlActionLoading(null)
+    }
+  }
+
+  const handleImportML = async () => {
+    try {
+      setMlActionLoading('import')
+      const data = await mercadoLibreService.importProducts()
+      setMessage({ type: 'success', text: `Mercado Libre: ${data.created} creados, ${data.updated} actualizados` })
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+    } finally {
+      setMlActionLoading(null)
+    }
+  }
+
+  const handleSyncML = async () => {
+    try {
+      setMlActionLoading('sync')
+      const data = await mercadoLibreService.syncInventory()
+      setMessage({ type: 'success', text: `Mercado Libre: ${data.synced} productos sincronizados` })
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+    } finally {
+      setMlActionLoading(null)
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════
 
   return (
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Integraciones</h1>
       <p className="text-gray-600 mb-8">Conecta tus canales de venta para sincronizar inventario</p>
 
-      {/* Mensajes */}
+      {/* Mensaje de éxito o error */}
       {message && (
         <div className={`mb-6 p-4 rounded-lg ${
-          message.type === 'success' 
-            ? 'bg-green-50 text-green-700 border border-green-200' 
+          message.type === 'success'
+            ? 'bg-green-50 text-green-700 border border-green-200'
             : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
           {message.text}
-          <button 
-            onClick={() => setMessage(null)}
-            className="float-right font-bold"
-          >
-            ×
-          </button>
+          <button onClick={() => setMessage(null)} className="float-right font-bold">×</button>
         </div>
       )}
 
-      {/* Grid de integraciones */}
       <div className="grid gap-6">
-        
+
         {/* ═══════════════════════════════════════════════════════════ */}
         {/* SHOPIFY */}
         {/* ═══════════════════════════════════════════════════════════ */}
@@ -185,20 +268,19 @@ export default function Integrations() {
               <div>
                 <h3 className="font-semibold text-gray-900 text-lg">Shopify</h3>
                 <p className="text-gray-500 text-sm">
-                  {loading ? 'Cargando...' : (
-                    shopifyStatus?.connected 
+                  {shopifyLoading ? 'Cargando...' : (
+                    shopifyStatus?.connected
                       ? `Conectado a: ${shopifyStatus.store_name}`
                       : 'No conectado'
                   )}
                 </p>
               </div>
             </div>
-            
-            {/* Estado */}
-            {!loading && (
+
+            {!shopifyLoading && (
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                shopifyStatus?.connected 
-                  ? 'bg-green-100 text-green-700' 
+                shopifyStatus?.connected
+                  ? 'bg-green-100 text-green-700'
                   : 'bg-gray-100 text-gray-600'
               }`}>
                 {shopifyStatus?.connected ? '● Conectado' : '○ Desconectado'}
@@ -206,63 +288,62 @@ export default function Integrations() {
             )}
           </div>
 
-          {/* Acciones */}
           <div className="mt-6 pt-4 border-t border-gray-100">
-            {loading ? (
-              <div className="text-gray-500">Cargando estado...</div>
+            {shopifyLoading ? (
+              <div className="text-gray-500 text-sm">Cargando estado...</div>
             ) : shopifyStatus?.connected ? (
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={handleImportShopify}
-                  disabled={actionLoading === 'import'}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!!shopifyActionLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
-                  {actionLoading === 'import' ? 'Importando...' : '📥 Importar Productos'}
+                  {shopifyActionLoading === 'import' ? 'Importando...' : '📥 Importar Productos'}
                 </button>
                 <button
                   onClick={handleSyncShopify}
-                  disabled={actionLoading === 'sync'}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!!shopifyActionLoading}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
-                  {actionLoading === 'sync' ? 'Sincronizando...' : '🔄 Sincronizar Inventario'}
+                  {shopifyActionLoading === 'sync' ? 'Sincronizando...' : '🔄 Sincronizar Inventario'}
                 </button>
                 <button
                   onClick={handleDisconnectShopify}
-                  disabled={actionLoading === 'disconnect'}
-                  className="px-4 py-2 bg-white text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                  disabled={!!shopifyActionLoading}
+                  className="px-4 py-2 bg-white text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50 text-sm"
                 >
-                  {actionLoading === 'disconnect' ? 'Desconectando...' : 'Desconectar'}
+                  {shopifyActionLoading === 'disconnect' ? 'Desconectando...' : 'Desconectar'}
                 </button>
               </div>
             ) : (
               <div>
-                {showConnectModal ? (
+                {showShopifyInput ? (
                   <div className="flex gap-3 items-center">
                     <input
                       type="text"
                       value={shopName}
                       onChange={(e) => setShopName(e.target.value)}
                       placeholder="tu-tienda (sin .myshopify.com)"
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     />
                     <button
                       onClick={handleConnectShopify}
-                      disabled={actionLoading === 'connect'}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      disabled={shopifyActionLoading === 'connect'}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
                     >
-                      {actionLoading === 'connect' ? 'Conectando...' : 'Conectar'}
+                      {shopifyActionLoading === 'connect' ? 'Conectando...' : 'Conectar'}
                     </button>
                     <button
-                      onClick={() => setShowConnectModal(false)}
-                      className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                      onClick={() => setShowShopifyInput(false)}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm"
                     >
                       Cancelar
                     </button>
                   </div>
                 ) : (
                   <button
-                    onClick={() => setShowConnectModal(true)}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    onClick={() => setShowShopifyInput(true)}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
                   >
                     🔗 Conectar Shopify
                   </button>
@@ -271,18 +352,17 @@ export default function Integrations() {
             )}
           </div>
 
-          {/* Info de última sincronización */}
           {shopifyStatus?.connected && shopifyStatus.last_synced_at && (
-            <p className="mt-4 text-sm text-gray-500">
+            <p className="mt-4 text-xs text-gray-400">
               Última sincronización: {new Date(shopifyStatus.last_synced_at).toLocaleString()}
             </p>
           )}
         </div>
 
         {/* ═══════════════════════════════════════════════════════════ */}
-        {/* MERCADO LIBRE - Próximamente */}
+        {/* MERCADO LIBRE */}
         {/* ═══════════════════════════════════════════════════════════ */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 opacity-60">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-yellow-100 rounded-lg text-yellow-600">
@@ -290,17 +370,82 @@ export default function Integrations() {
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900 text-lg">Mercado Libre</h3>
-                <p className="text-gray-500 text-sm">Próximamente</p>
+                <p className="text-gray-500 text-sm">
+                  {mlLoading ? 'Cargando...' : (
+                    mlStatus?.connected
+                      ? `Conectado como: ${mlStatus.account}`
+                      : 'No conectado'
+                  )}
+                </p>
               </div>
             </div>
-            <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-500">
-              🚧 En desarrollo
-            </span>
+
+            {!mlLoading && (
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                mlStatus?.connected
+                  ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-gray-100 text-gray-600'
+              }`}>
+                {mlStatus?.connected ? '● Conectado' : '○ Desconectado'}
+              </span>
+            )}
           </div>
+
+          <div className="mt-6 pt-4 border-t border-gray-100">
+            {mlLoading ? (
+              <div className="text-gray-500 text-sm">Cargando estado...</div>
+            ) : mlStatus?.connected ? (
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handleImportML}
+                  disabled={!!mlActionLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {mlActionLoading === 'import' ? 'Importando...' : '📥 Importar Publicaciones'}
+                </button>
+                <button
+                  onClick={handleSyncML}
+                  disabled={!!mlActionLoading}
+                  className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {mlActionLoading === 'sync' ? 'Sincronizando...' : '🔄 Sincronizar Inventario'}
+                </button>
+                <button
+                  onClick={handleDisconnectML}
+                  disabled={!!mlActionLoading}
+                  className="px-4 py-2 bg-white text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50 text-sm"
+                >
+                  {mlActionLoading === 'disconnect' ? 'Desconectando...' : 'Desconectar'}
+                </button>
+              </div>
+            ) : (
+              // Sin necesitar input — ML no requiere nombre de tienda
+              <button
+                onClick={handleConnectML}
+                disabled={mlActionLoading === 'connect'}
+                className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 text-sm"
+              >
+                {mlActionLoading === 'connect' ? 'Redirigiendo...' : '🔗 Conectar Mercado Libre'}
+              </button>
+            )}
+          </div>
+
+          {mlStatus?.connected && mlStatus.last_synced_at && (
+            <p className="mt-4 text-xs text-gray-400">
+              Última sincronización: {new Date(mlStatus.last_synced_at).toLocaleString()}
+            </p>
+          )}
+
+          {/* Nota sobre ngrok para el desarrollador */}
+          {!mlStatus?.connected && (
+            <p className="mt-4 text-xs text-gray-400 bg-gray-50 rounded p-2">
+              💡 Para pruebas locales necesitas configurar ngrok. Consulta el .env del backend.
+            </p>
+          )}
         </div>
 
         {/* ═══════════════════════════════════════════════════════════ */}
-        {/* AMAZON - Próximamente */}
+        {/* AMAZON — Próximamente */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 opacity-60">
           <div className="flex items-start justify-between">

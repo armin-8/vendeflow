@@ -222,6 +222,74 @@ export const shopifyService = {
 }
 
 // ═══════════════════════════════════════════════════════════
+// SERVICIOS DE MERCADO LIBRE
+// ═══════════════════════════════════════════════════════════
+//
+// ¿POR QUÉ connect() NO necesita parámetros?
+// -------------------------------------------
+// Shopify: cada usuario tiene su propio dominio (tu-tienda.myshopify.com)
+//          → necesitamos el shop name para construir la URL de auth
+//
+// Mercado Libre: es una plataforma global, la URL de auth es siempre la misma
+//          → el backend genera la URL directamente sin necesitar datos extra
+
+export const mercadoLibreService = {
+  /**
+   * Obtener estado de conexión con Mercado Libre.
+   */
+  getStatus: async () => {
+    return request('/mercadolibre/status')
+  },
+
+  /**
+   * Iniciar conexión OAuth con Mercado Libre.
+   * El backend genera la URL de autorización y la devuelve.
+   * El frontend redirige al usuario a esa URL.
+   */
+  connect: async () => {
+    return request('/mercadolibre/connect')
+  },
+
+  /**
+   * Desconectar cuenta de Mercado Libre.
+   */
+  disconnect: async () => {
+    return request('/mercadolibre/disconnect', {
+      method: 'DELETE'
+    })
+  },
+
+  /**
+   * Obtener publicaciones del usuario en ML.
+   */
+  getProducts: async () => {
+    return request('/mercadolibre/products')
+  },
+
+  /**
+   * Importar publicaciones de ML al inventario de VendeFlow.
+   * @param {boolean} updateExisting - Si true, actualiza productos que ya existen
+   */
+  importProducts: async (updateExisting = true) => {
+    return request('/mercadolibre/import', {
+      method: 'POST',
+      body: JSON.stringify({ update_existing: updateExisting })
+    })
+  },
+
+  /**
+   * Sincronizar stock de VendeFlow → publicaciones de ML.
+   * @param {string|null} sku - Si se pasa, solo sincroniza ese producto
+   */
+  syncInventory: async (sku = null) => {
+    return request('/mercadolibre/sync', {
+      method: 'POST',
+      body: JSON.stringify(sku ? { sku } : {})
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // SERVICIOS DE IMPORTACIÓN
 // ═══════════════════════════════════════════════════════════
 

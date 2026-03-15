@@ -51,12 +51,13 @@ def create_app(config_class=None):
     # REGISTRAR BLUEPRINTS (RUTAS)
     # ═══════════════════════════════════════════════════════════
     
-    from app.routes import auth_routes, inventory_routes, import_routes, shopify_routes
+    from app.routes import auth_routes, inventory_routes, import_routes, shopify_routes, mercadolibre_routes
     
-    app.register_blueprint(auth_routes.bp)        # /api/auth/*
-    app.register_blueprint(inventory_routes.bp)   # /api/inventory/*
-    app.register_blueprint(import_routes.bp)      # /api/import/*
-    app.register_blueprint(shopify_routes.bp)     # /api/shopify/*
+    app.register_blueprint(auth_routes.bp)           # /api/auth/*
+    app.register_blueprint(inventory_routes.bp)      # /api/inventory/*
+    app.register_blueprint(import_routes.bp)         # /api/import/*
+    app.register_blueprint(shopify_routes.bp)        # /api/shopify/*
+    app.register_blueprint(mercadolibre_routes.bp)   # /api/mercadolibre/*
     
     # Ruta de health check
     @app.route('/api/health')
