@@ -28,7 +28,6 @@ async function request(endpoint, options = {}) {
   }
   
   // Solo agregar Content-Type si no es FormData
-  // (FormData necesita que el navegador ponga el Content-Type automáticamente)
   if (!(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json'
   }
@@ -60,9 +59,6 @@ async function request(endpoint, options = {}) {
 // ═══════════════════════════════════════════════════════════
 
 export const authService = {
-  /**
-   * Registrar nuevo usuario.
-   */
   register: async (userData) => {
     return request('/auth/register', {
       method: 'POST',
@@ -70,9 +66,6 @@ export const authService = {
     })
   },
   
-  /**
-   * Iniciar sesión.
-   */
   login: async (credentials) => {
     return request('/auth/login', {
       method: 'POST',
@@ -80,16 +73,10 @@ export const authService = {
     })
   },
   
-  /**
-   * Obtener datos del usuario actual.
-   */
   getMe: async () => {
     return request('/auth/me')
   },
   
-  /**
-   * Actualizar perfil.
-   */
   updateProfile: async (data) => {
     return request('/auth/me', {
       method: 'PUT',
@@ -103,34 +90,21 @@ export const authService = {
 // ═══════════════════════════════════════════════════════════
 
 export const inventoryService = {
-  /**
-   * Obtener todos los productos con paginación y filtros.
-   */
   getAll: async (params = {}) => {
     const queryParams = new URLSearchParams()
-    
     if (params.page) queryParams.append('page', params.page)
     if (params.per_page) queryParams.append('per_page', params.per_page)
     if (params.search) queryParams.append('search', params.search)
     if (params.category) queryParams.append('category', params.category)
     if (params.low_stock) queryParams.append('low_stock', 'true')
-    
     const queryString = queryParams.toString()
-    const endpoint = queryString ? `/inventory?${queryString}` : '/inventory'
-    
-    return request(endpoint)
+    return request(queryString ? `/inventory?${queryString}` : '/inventory')
   },
   
-  /**
-   * Obtener un producto por ID.
-   */
   getById: async (productId) => {
     return request(`/inventory/${productId}`)
   },
   
-  /**
-   * Crear un nuevo producto.
-   */
   create: async (productData) => {
     return request('/inventory', {
       method: 'POST',
@@ -138,9 +112,6 @@ export const inventoryService = {
     })
   },
   
-  /**
-   * Actualizar un producto existente.
-   */
   update: async (productId, productData) => {
     return request(`/inventory/${productId}`, {
       method: 'PUT',
@@ -148,18 +119,12 @@ export const inventoryService = {
     })
   },
   
-  /**
-   * Eliminar un producto.
-   */
   delete: async (productId) => {
     return request(`/inventory/${productId}`, {
       method: 'DELETE'
     })
   },
   
-  /**
-   * Obtener estadísticas del inventario.
-   */
   getStats: async () => {
     return request('/inventory/stats')
   }
@@ -170,40 +135,22 @@ export const inventoryService = {
 // ═══════════════════════════════════════════════════════════
 
 export const shopifyService = {
-  /**
-   * Obtener estado de conexión con Shopify.
-   */
   getStatus: async () => {
     return request('/shopify/status')
   },
   
-  /**
-   * Iniciar conexión OAuth con Shopify.
-   * @param {string} shopName - Nombre de la tienda (sin .myshopify.com)
-   */
   connect: async (shopName) => {
     return request(`/shopify/connect?shop=${encodeURIComponent(shopName)}`)
   },
   
-  /**
-   * Desconectar tienda Shopify.
-   */
   disconnect: async () => {
-    return request('/shopify/disconnect', {
-      method: 'DELETE'
-    })
+    return request('/shopify/disconnect', { method: 'DELETE' })
   },
   
-  /**
-   * Obtener productos de Shopify.
-   */
   getProducts: async () => {
     return request('/shopify/products')
   },
   
-  /**
-   * Importar productos de Shopify a VendeFlow.
-   */
   importProducts: async (updateExisting = true) => {
     return request('/shopify/import', {
       method: 'POST',
@@ -212,11 +159,28 @@ export const shopifyService = {
   },
   
   /**
-   * Sincronizar inventario de VendeFlow a Shopify.
+   * Sincronizar inventario → Shopify.
+   * Sin parámetros: sincroniza TODOS los productos vinculados.
    */
   syncInventory: async () => {
+    return request('/shopify/sync', { method: 'POST' })
+  },
+
+  /**
+   * Sincronizar UN solo SKU → Shopify.
+   * 
+   * ¿POR QUÉ ESTE MÉTODO SEPARADO?
+   * --------------------------------
+   * La fuente de verdad del inventario real es Odoo.
+   * Sincronizar masivamente podría sobreescribir stock real con datos incorrectos.
+   * Con syncBySku el usuario elige exactamente qué producto sincronizar.
+   * 
+   * @param {string} sku - SKU del producto a sincronizar
+   */
+  syncBySku: async (sku) => {
     return request('/shopify/sync', {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify({ sku })
     })
   }
 }
@@ -224,52 +188,24 @@ export const shopifyService = {
 // ═══════════════════════════════════════════════════════════
 // SERVICIOS DE MERCADO LIBRE
 // ═══════════════════════════════════════════════════════════
-//
-// ¿POR QUÉ connect() NO necesita parámetros?
-// -------------------------------------------
-// Shopify: cada usuario tiene su propio dominio (tu-tienda.myshopify.com)
-//          → necesitamos el shop name para construir la URL de auth
-//
-// Mercado Libre: es una plataforma global, la URL de auth es siempre la misma
-//          → el backend genera la URL directamente sin necesitar datos extra
 
 export const mercadoLibreService = {
-  /**
-   * Obtener estado de conexión con Mercado Libre.
-   */
   getStatus: async () => {
     return request('/mercadolibre/status')
   },
 
-  /**
-   * Iniciar conexión OAuth con Mercado Libre.
-   * El backend genera la URL de autorización y la devuelve.
-   * El frontend redirige al usuario a esa URL.
-   */
   connect: async () => {
     return request('/mercadolibre/connect')
   },
 
-  /**
-   * Desconectar cuenta de Mercado Libre.
-   */
   disconnect: async () => {
-    return request('/mercadolibre/disconnect', {
-      method: 'DELETE'
-    })
+    return request('/mercadolibre/disconnect', { method: 'DELETE' })
   },
 
-  /**
-   * Obtener publicaciones del usuario en ML.
-   */
   getProducts: async () => {
     return request('/mercadolibre/products')
   },
 
-  /**
-   * Importar publicaciones de ML al inventario de VendeFlow.
-   * @param {boolean} updateExisting - Si true, actualiza productos que ya existen
-   */
   importProducts: async (updateExisting = true) => {
     return request('/mercadolibre/import', {
       method: 'POST',
@@ -278,13 +214,23 @@ export const mercadoLibreService = {
   },
 
   /**
-   * Sincronizar stock de VendeFlow → publicaciones de ML.
-   * @param {string|null} sku - Si se pasa, solo sincroniza ese producto
+   * Sincronizar inventario → Mercado Libre.
+   * Sin parámetros: sincroniza TODOS los productos vinculados.
    */
-  syncInventory: async (sku = null) => {
+  syncInventory: async () => {
+    return request('/mercadolibre/sync', { method: 'POST' })
+  },
+
+  /**
+   * Sincronizar UN solo SKU → Mercado Libre.
+   * Misma lógica que shopifyService.syncBySku.
+   * 
+   * @param {string} sku - SKU del producto a sincronizar
+   */
+  syncBySku: async (sku) => {
     return request('/mercadolibre/sync', {
       method: 'POST',
-      body: JSON.stringify(sku ? { sku } : {})
+      body: JSON.stringify({ sku })
     })
   }
 }
@@ -294,34 +240,15 @@ export const mercadoLibreService = {
 // ═══════════════════════════════════════════════════════════
 
 export const importService = {
-  /**
-   * Subir archivo y obtener vista previa.
-   * 
-   * ¿QUÉ ES FormData?
-   * -----------------
-   * Es la forma de enviar archivos en JavaScript.
-   * Es como un formulario HTML pero en código.
-   * 
-   * @param {File} file - Archivo seleccionado por el usuario
-   * @returns {Promise} - Respuesta con productos leídos
-   */
   preview: async (file) => {
-    // Crear FormData y agregar el archivo
     const formData = new FormData()
     formData.append('file', file)
-    
     return request('/import/preview', {
       method: 'POST',
-      body: formData  // No usamos JSON.stringify con FormData
+      body: formData
     })
   },
   
-  /**
-   * Confirmar importación y guardar productos.
-   * 
-   * @param {boolean} updateExisting - Si actualizar productos que ya existen
-   * @returns {Promise} - Resultado de la importación
-   */
   confirm: async (updateExisting = false) => {
     return request('/import/confirm', {
       method: 'POST',
@@ -329,9 +256,6 @@ export const importService = {
     })
   },
   
-  /**
-   * Obtener información sobre las columnas esperadas.
-   */
   getTemplate: async () => {
     return request('/import/template')
   }
