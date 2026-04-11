@@ -33,3 +33,6 @@ openpyxl==3.1.2
 
 # HTTP Client (para APIs externas)
 requests==2.31.0
+
+# Inteligencia Artificial
+anthropic==0.94.0
