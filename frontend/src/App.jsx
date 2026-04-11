@@ -1,29 +1,5 @@
-/**
- * VendeFlow - Componente Principal
- * =================================
- * 
- * Define la estructura general de la aplicación y las rutas.
- * 
- * RUTAS:
- * ------
- * Públicas (cualquiera puede acceder):
- *   /          → Landing page
- *   /login     → Iniciar sesión
- *   /register  → Registrarse
- * 
- * Protegidas (requieren autenticación):
- *   /dashboard     → Panel principal
- *   /inventory     → Lista de productos
- *   /import        → Importar desde Excel/CSV
- *   /integrations  → Conectar plataformas (Shopify, etc.)
- */
-
 import { Routes, Route } from 'react-router-dom'
-
-// Layout
 import Layout from './components/Layout'
-
-// Páginas
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -31,29 +7,26 @@ import Dashboard from './pages/Dashboard'
 import Inventory from './pages/Inventory'
 import Import from './pages/Import'
 import Integrations from './pages/Integrations'
+import Publish from './pages/Publish'
 import NotFound from './pages/NotFound'
-
-// Componente de ruta protegida
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
   return (
     <Routes>
-      {/* Rutas públicas */}
       <Route path="/" element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="login" element={<Login />} />
         <Route path="register" element={<Register />} />
         
-        {/* Rutas protegidas (requieren autenticación) */}
         <Route element={<ProtectedRoute />}>
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="import" element={<Import />} />
           <Route path="integrations" element={<Integrations />} />
+          <Route path="publish" element={<Publish />} />
         </Route>
         
-        {/* 404 */}
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
