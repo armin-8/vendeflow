@@ -3,16 +3,33 @@ VendeFlow - Rutas de Inteligencia Artificial
 =============================================
 
 ENDPOINTS:
-- POST /api/ai/generate-listing   → Genera contenido multi-plataforma con Claude
+- GET  /api/ai/status              → Verificar que Ollama está corriendo
+- POST /api/ai/generate-listing    → Genera contenido multi-plataforma
 - POST /api/ai/improve-description → Mejora una descripción existente
 """
 
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required
 
 from app.services.ai_service import ai_service
 
 bp = Blueprint('ai', __name__, url_prefix='/api/ai')
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT: VERIFICAR ESTADO DE OLLAMA
+# ═══════════════════════════════════════════════════════════
+
+@bp.route('/status', methods=['GET'])
+@jwt_required()
+def get_status():
+    """Verifica que Ollama está corriendo y el modelo disponible."""
+    success, message = ai_service.health_check()
+    return jsonify({
+        'available': success,
+        'message': message,
+        'model': ai_service.MODEL
+    }), 200 if success else 503
 
 
 # ═══════════════════════════════════════════════════════════
@@ -23,26 +40,16 @@ bp = Blueprint('ai', __name__, url_prefix='/api/ai')
 @jwt_required()
 def generate_listing():
     """
-    Genera contenido optimizado para múltiples plataformas con Claude API.
+    Genera contenido optimizado para múltiples plataformas con Ollama.
 
     BODY:
     {
-        "name": "Filtro Polar Pro Hero 8",           ← requerido
-        "description": "Filtro para buceo...",       ← opcional
-        "category": "Fotografía y Video",            ← opcional
-        "brand": "Polar Pro",                        ← opcional
-        "price": 899.00,                             ← opcional
-        "platforms": ["shopify", "mercadolibre"]     ← opcional (default: todas)
-    }
-
-    RESPONSE:
-    {
-        "success": true,
-        "listing": {
-            "shopify": { "title": "...", "description_html": "...", ... },
-            "mercadolibre": { "title": "...", "description": "...", ... },
-            "amazon": { "title": "...", "bullet_points": [...], ... }
-        }
+        "name": "Filtro Polar Pro Hero 8",
+        "description": "Filtro para buceo...",
+        "category": "Fotografía y Video",
+        "brand": "Polar Pro",
+        "price": 899.00,
+        "platforms": ["shopify", "mercadolibre"]
     }
     """
     data = request.get_json()
@@ -54,13 +61,12 @@ def generate_listing():
     if not name:
         return jsonify({'success': False, 'error': 'El nombre del producto es requerido'}), 400
 
-    # Plataformas válidas
     valid_platforms = ['shopify', 'mercadolibre', 'amazon']
     platforms = data.get('platforms', valid_platforms)
     platforms = [p for p in platforms if p in valid_platforms]
 
     if not platforms:
-        return jsonify({'success': False, 'error': 'Debes seleccionar al menos una plataforma válida'}), 400
+        return jsonify({'success': False, 'error': 'Selecciona al menos una plataforma válida'}), 400
 
     try:
         listing = ai_service.generate_listing(
@@ -72,10 +78,7 @@ def generate_listing():
             platforms=platforms
         )
 
-        return jsonify({
-            'success': True,
-            'listing': listing
-        }), 200
+        return jsonify({'success': True, 'listing': listing}), 200
 
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
@@ -95,7 +98,7 @@ def improve_description():
 
     BODY:
     {
-        "description": "Texto actual del producto...",
+        "description": "Texto actual...",
         "platform": "mercadolibre"
     }
     """
