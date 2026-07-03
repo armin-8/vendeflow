@@ -1,93 +1,35 @@
 /**
  * VendeFlow - Servicio de API
  * ============================
- * 
  * Centraliza todas las llamadas HTTP al backend.
- * 
- * VENTAJAS DE CENTRALIZAR:
- * - El token se agrega automáticamente
- * - Manejo de errores en un solo lugar
- * - Fácil de mantener y actualizar
  */
 
-// URL base del backend
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
-/**
- * Función base para hacer requests HTTP.
- * Agrega automáticamente el token si existe.
- */
 async function request(endpoint, options = {}) {
-  // Obtener token del localStorage (Zustand lo guarda ahí)
   const authData = JSON.parse(localStorage.getItem('vendeflow-auth') || '{}')
   const token = authData?.state?.token
-  
-  // Configurar headers
-  const headers = {
-    ...options.headers
-  }
-  
-  // Solo agregar Content-Type si no es FormData
+  const headers = { ...options.headers }
   if (!(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json'
   }
-  
-  // Agregar token si existe
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  
-  // Hacer la petición
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers
-  })
-  
-  // Parsear respuesta
+  const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers })
   const data = await response.json()
-  
-  // Si hay error, lanzar excepción
   if (!response.ok) {
     throw new Error(data.error || 'Error en la petición')
   }
-  
   return data
 }
 
-// ═══════════════════════════════════════════════════════════
-// SERVICIOS DE AUTENTICACIÓN
-// ═══════════════════════════════════════════════════════════
-
 export const authService = {
-  register: async (userData) => {
-    return request('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(userData)
-    })
-  },
-  
-  login: async (credentials) => {
-    return request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials)
-    })
-  },
-  
-  getMe: async () => {
-    return request('/auth/me')
-  },
-  
-  updateProfile: async (data) => {
-    return request('/auth/me', {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    })
-  }
+  register: async (userData) => request('/auth/register', { method: 'POST', body: JSON.stringify(userData) }),
+  login: async (credentials) => request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+  getMe: async () => request('/auth/me'),
+  updateProfile: async (data) => request('/auth/me', { method: 'PUT', body: JSON.stringify(data) })
 }
-
-// ═══════════════════════════════════════════════════════════
-// SERVICIOS DE INVENTARIO
-// ═══════════════════════════════════════════════════════════
 
 export const inventoryService = {
   getAll: async (params = {}) => {
@@ -100,163 +42,46 @@ export const inventoryService = {
     const queryString = queryParams.toString()
     return request(queryString ? `/inventory?${queryString}` : '/inventory')
   },
-  
-  getById: async (productId) => {
-    return request(`/inventory/${productId}`)
-  },
-  
-  create: async (productData) => {
-    return request('/inventory', {
-      method: 'POST',
-      body: JSON.stringify(productData)
-    })
-  },
-  
-  update: async (productId, productData) => {
-    return request(`/inventory/${productId}`, {
-      method: 'PUT',
-      body: JSON.stringify(productData)
-    })
-  },
-  
-  delete: async (productId) => {
-    return request(`/inventory/${productId}`, {
-      method: 'DELETE'
-    })
-  },
-  
-  getStats: async () => {
-    return request('/inventory/stats')
-  }
+  getById: async (productId) => request(`/inventory/${productId}`),
+  create: async (productData) => request('/inventory', { method: 'POST', body: JSON.stringify(productData) }),
+  update: async (productId, productData) => request(`/inventory/${productId}`, { method: 'PUT', body: JSON.stringify(productData) }),
+  delete: async (productId) => request(`/inventory/${productId}`, { method: 'DELETE' }),
+  getStats: async () => request('/inventory/stats')
 }
-
-// ═══════════════════════════════════════════════════════════
-// SERVICIOS DE SHOPIFY
-// ═══════════════════════════════════════════════════════════
 
 export const shopifyService = {
-  getStatus: async () => {
-    return request('/shopify/status')
-  },
-  
-  connect: async (shopName) => {
-    return request(`/shopify/connect?shop=${encodeURIComponent(shopName)}`)
-  },
-  
-  disconnect: async () => {
-    return request('/shopify/disconnect', { method: 'DELETE' })
-  },
-  
-  getProducts: async () => {
-    return request('/shopify/products')
-  },
-  
-  importProducts: async (updateExisting = true) => {
-    return request('/shopify/import', {
-      method: 'POST',
-      body: JSON.stringify({ update_existing: updateExisting })
-    })
-  },
-  
-  /**
-   * Sincronizar inventario → Shopify.
-   * Sin parámetros: sincroniza TODOS los productos vinculados.
-   */
-  syncInventory: async () => {
-    return request('/shopify/sync', { method: 'POST' })
-  },
+  getStatus: async () => request('/shopify/status'),
+  connect: async (shopName) => request(`/shopify/connect?shop=${encodeURIComponent(shopName)}`),
+  disconnect: async () => request('/shopify/disconnect', { method: 'DELETE' }),
+  getProducts: async () => request('/shopify/products'),
+  importProducts: async (updateExisting = true) => request('/shopify/import', { method: 'POST', body: JSON.stringify({ update_existing: updateExisting }) }),
+  syncInventory: async () => request('/shopify/sync', { method: 'POST' }),
+  syncBySku: async (sku) => request('/shopify/sync', { method: 'POST', body: JSON.stringify({ sku }) }),
 
   /**
-   * Sincronizar UN solo SKU → Shopify.
-   * 
-   * ¿POR QUÉ ESTE MÉTODO SEPARADO?
-   * --------------------------------
-   * La fuente de verdad del inventario real es Odoo.
-   * Sincronizar masivamente podría sobreescribir stock real con datos incorrectos.
-   * Con syncBySku el usuario elige exactamente qué producto sincronizar.
-   * 
-   * @param {string} sku - SKU del producto a sincronizar
+   * Crear producto en Shopify desde el contenido generado por la IA.
+   * El producto se crea como BORRADOR (draft) para que el usuario
+   * lo revise en el admin de Shopify antes de publicarlo.
    */
-  syncBySku: async (sku) => {
-    return request('/shopify/sync', {
-      method: 'POST',
-      body: JSON.stringify({ sku })
-    })
-  }
+  createProduct: async (productData) => request('/shopify/create-product', { method: 'POST', body: JSON.stringify(productData) })
 }
-
-// ═══════════════════════════════════════════════════════════
-// SERVICIOS DE MERCADO LIBRE
-// ═══════════════════════════════════════════════════════════
 
 export const mercadoLibreService = {
-  getStatus: async () => {
-    return request('/mercadolibre/status')
-  },
-
-  connect: async () => {
-    return request('/mercadolibre/connect')
-  },
-
-  disconnect: async () => {
-    return request('/mercadolibre/disconnect', { method: 'DELETE' })
-  },
-
-  getProducts: async () => {
-    return request('/mercadolibre/products')
-  },
-
-  importProducts: async (updateExisting = true) => {
-    return request('/mercadolibre/import', {
-      method: 'POST',
-      body: JSON.stringify({ update_existing: updateExisting })
-    })
-  },
-
-  /**
-   * Sincronizar inventario → Mercado Libre.
-   * Sin parámetros: sincroniza TODOS los productos vinculados.
-   */
-  syncInventory: async () => {
-    return request('/mercadolibre/sync', { method: 'POST' })
-  },
-
-  /**
-   * Sincronizar UN solo SKU → Mercado Libre.
-   * Misma lógica que shopifyService.syncBySku.
-   * 
-   * @param {string} sku - SKU del producto a sincronizar
-   */
-  syncBySku: async (sku) => {
-    return request('/mercadolibre/sync', {
-      method: 'POST',
-      body: JSON.stringify({ sku })
-    })
-  }
+  getStatus: async () => request('/mercadolibre/status'),
+  connect: async () => request('/mercadolibre/connect'),
+  disconnect: async () => request('/mercadolibre/disconnect', { method: 'DELETE' }),
+  getProducts: async () => request('/mercadolibre/products'),
+  importProducts: async (updateExisting = true) => request('/mercadolibre/import', { method: 'POST', body: JSON.stringify({ update_existing: updateExisting }) }),
+  syncInventory: async () => request('/mercadolibre/sync', { method: 'POST' }),
+  syncBySku: async (sku) => request('/mercadolibre/sync', { method: 'POST', body: JSON.stringify({ sku }) })
 }
-
-// ═══════════════════════════════════════════════════════════
-// SERVICIOS DE IMPORTACIÓN
-// ═══════════════════════════════════════════════════════════
 
 export const importService = {
   preview: async (file) => {
     const formData = new FormData()
     formData.append('file', file)
-    return request('/import/preview', {
-      method: 'POST',
-      body: formData
-    })
+    return request('/import/preview', { method: 'POST', body: formData })
   },
-  
-  confirm: async (updateExisting = false) => {
-    return request('/import/confirm', {
-      method: 'POST',
-      body: JSON.stringify({ update_existing: updateExisting })
-    })
-  },
-  
-  getTemplate: async () => {
-    return request('/import/template')
-  }
+  confirm: async (updateExisting = false) => request('/import/confirm', { method: 'POST', body: JSON.stringify({ update_existing: updateExisting }) }),
+  getTemplate: async () => request('/import/template')
 }
