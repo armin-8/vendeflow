@@ -6,29 +6,13 @@ Usa Ollama (local) para generar contenido optimizado de productos
 para cada plataforma de e-commerce. Corre 100% en tu Mac, sin
 costos ni dependencias externas.
 
-¿POR QUÉ OLLAMA?
------------------
-- Gratis y sin límites
-- Corre localmente (privacidad total)
-- Modelos open source (Llama 3.2)
-- Misma calidad para e-commerce LATAM
-
 MODELO USADO: llama3.2:latest
   → 2GB, rápido en Mac M1/M2/M3
   → Excelente para generación de texto en español
-
-FLUJO:
-------
-1. Usuario llena datos básicos del producto
-2. ai_service genera contenido con Ollama
-3. Usuario REVISA y EDITA (human in the loop)
-4. Usuario confirma → se publica en todas las plataformas
 """
 
-import os
 import json
 import requests
-from typing import Optional
 
 
 class AIService:
@@ -37,43 +21,115 @@ class AIService:
     Usa Ollama corriendo localmente en el puerto 11434.
     """
 
-    # URL de Ollama local
     OLLAMA_URL = "http://localhost:11434/api/generate"
-
-    # Modelo a usar
     MODEL = "llama3.2:latest"
 
     # ═══════════════════════════════════════════════════════════
     # MÉTODO PRINCIPAL: GENERAR LISTING MULTI-PLATAFORMA
     # ═══════════════════════════════════════════════════════════
 
-    def generate_listing(
-        self,
-        name: str,
-        description: str = '',
-        category: str = '',
-        brand: str = '',
-        price: float = 0.0,
-        platforms: list = None
-    ) -> dict:
+    def generate_listing(self, name, description='', category='', brand='', price=0.0, platforms=None):
         """
         Genera contenido optimizado para múltiples plataformas con Ollama.
-
-        Args:
-            name:        Nombre base del producto
-            description: Descripción corta opcional del usuario
-            category:    Categoría del producto
-            brand:       Marca del producto
-            price:       Precio en MXN
-            platforms:   Lista de plataformas ['shopify', 'mercadolibre', 'amazon']
-
-        Returns:
-            Dict con contenido optimizado por plataforma
         """
         if platforms is None:
             platforms = ['shopify', 'mercadolibre', 'amazon']
 
-        prompt = self._build_prompt(name, description, category, brand, price, platforms)
+        # ─── MEJORA CLAVE ────────────────────────────────────
+        # Pedimos por plataforma de forma independiente para evitar
+        # que el JSON quede truncado por límite de tokens.
+        # Es más confiable que pedir todo en una sola llamada.
+        # ─────────────────────────────────────────────────────
+        result = {}
+
+        for platform in platforms:
+            try:
+                platform_result = self._generate_for_platform(
+                    platform, name, description, category, brand, price
+                )
+                result[platform] = platform_result
+            except Exception as e:
+                result[platform] = {'error': str(e)}
+
+        import datetime
+        result['generated_at'] = datetime.datetime.utcnow().isoformat()
+        result['platforms'] = platforms
+        result['model'] = self.MODEL
+
+        return result
+
+    def _generate_for_platform(self, platform, name, description, category, brand, price):
+        """
+        Genera contenido para UNA sola plataforma.
+
+        ¿POR QUÉ UNA PLATAFORMA A LA VEZ?
+        ------------------------------------
+        Llama 3.2 tiene un límite de contexto. Si pedimos Shopify +
+        ML + Amazon juntos, el JSON queda truncado e inválido.
+        Al pedir de uno en uno, cada respuesta es corta y completa.
+        """
+        prompts = {
+            'shopify': f"""Eres experto en e-commerce LATAM. Genera contenido para Shopify en español de México.
+
+Producto: {name}
+Descripción base: {description or 'No proporcionada'}
+Categoría: {category or 'No especificada'}
+Marca: {brand or 'No especificada'}
+Precio: ${price:.2f} MXN
+
+Genera un JSON con exactamente esta estructura (sin texto adicional, sin explicaciones):
+{{
+  "title": "título atractivo máximo 255 caracteres",
+  "description_html": "<h2>Características</h2><ul><li>característica 1</li><li>característica 2</li><li>característica 3</li></ul><h2>Beneficios</h2><ul><li>beneficio 1</li><li>beneficio 2</li></ul>",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "seo_title": "título SEO máximo 70 caracteres",
+  "seo_description": "meta description máximo 160 caracteres"
+}}""",
+
+            'mercadolibre': f"""Eres experto en e-commerce LATAM. Genera contenido para Mercado Libre México en español.
+
+Producto: {name}
+Descripción base: {description or 'No proporcionada'}
+Categoría: {category or 'No especificada'}
+Marca: {brand or 'No especificada'}
+Precio: ${price:.2f} MXN
+
+IMPORTANTE: El título DEBE tener MÁXIMO 60 caracteres contando espacios.
+
+Genera un JSON con exactamente esta estructura (sin texto adicional, sin explicaciones):
+{{
+  "title": "título máximo 60 caracteres aquí",
+  "description": "descripción en texto plano sin HTML entre 100 y 200 palabras aquí",
+  "category_hint": "Categoría sugerida",
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+}}""",
+
+            'amazon': f"""Eres experto en e-commerce LATAM. Genera contenido para Amazon México en español.
+
+Producto: {name}
+Descripción base: {description or 'No proporcionada'}
+Categoría: {category or 'No especificada'}
+Marca: {brand or 'No especificada'}
+Precio: ${price:.2f} MXN
+
+Genera un JSON con exactamente esta estructura (sin texto adicional, sin explicaciones):
+{{
+  "title": "título máximo 200 caracteres con marca y modelo",
+  "bullet_points": [
+    "BENEFICIO 1: descripción del primer beneficio",
+    "BENEFICIO 2: descripción del segundo beneficio",
+    "BENEFICIO 3: descripción del tercer beneficio",
+    "BENEFICIO 4: descripción del cuarto beneficio",
+    "BENEFICIO 5: descripción del quinto beneficio"
+  ],
+  "description": "descripción optimizada para SEO de 200 palabras",
+  "backend_keywords": "keywords separadas por espacio sin repetir del título"
+}}"""
+        }
+
+        prompt = prompts.get(platform)
+        if not prompt:
+            raise ValueError(f"Plataforma no soportada: {platform}")
 
         try:
             response = requests.post(
@@ -84,183 +140,29 @@ class AIService:
                     "stream": False,
                     "options": {
                         "temperature": 0.7,
-                        "num_predict": 2000
+                        "num_predict": 1500  # Suficiente para 1 plataforma
                     }
                 },
-                timeout=120  # Ollama puede tardar más que una API externa
+                timeout=120
             )
 
             if response.status_code != 200:
-                raise ValueError(f"Error de Ollama: {response.status_code} - {response.text}")
+                raise ValueError(f"Error de Ollama: {response.status_code}")
 
             response_text = response.json().get('response', '')
-            result = self._parse_response(response_text, platforms)
-            return result
+            return self._parse_response(response_text, platform)
 
         except requests.exceptions.ConnectionError:
-            raise ValueError(
-                "No se pudo conectar con Ollama. "
-                "Asegúrate de que Ollama esté corriendo con: ollama serve"
-            )
-        except Exception as e:
-            raise ValueError(f"Error al generar contenido: {str(e)}")
+            raise ValueError("Ollama no está corriendo. Verifica que esté activo.")
 
     # ═══════════════════════════════════════════════════════════
-    # CONSTRUIR PROMPT
+    # PARSEAR RESPUESTA
     # ═══════════════════════════════════════════════════════════
 
-    def _build_prompt(
-        self,
-        name: str,
-        description: str,
-        category: str,
-        brand: str,
-        price: float,
-        platforms: list
-    ) -> str:
+    def _parse_response(self, response_text, platform):
         """
-        Construye el prompt con los requisitos específicos de cada plataforma.
+        Parsea el JSON de Ollama y valida campos críticos.
         """
-
-        platforms_section = self._build_platforms_requirements(platforms)
-        json_structure = self._build_json_structure(platforms)
-
-        prompt = f"""Eres un experto en e-commerce para LATAM con 10 años de experiencia optimizando listings en Shopify, Mercado Libre y Amazon México. Hablas español de México.
-
-Producto:
-- Nombre: {name}
-- Descripción base: {description if description else 'No proporcionada'}
-- Categoría: {category if category else 'No especificada'}
-- Marca: {brand if brand else 'No especificada'}
-- Precio: ${price:.2f} MXN
-
-Genera contenido optimizado ÚNICAMENTE para estas plataformas: {', '.join(platforms)}
-
-{platforms_section}
-
-REGLAS IMPORTANTES:
-- Usa español de México natural y persuasivo
-- Enfócate en beneficios para el comprador
-- Si la marca no está especificada, no la inventes
-- El título de Mercado Libre DEBE tener máximo 60 caracteres (cuenta exactamente)
-- Amazon necesita EXACTAMENTE 5 bullet points, ni más ni menos
-
-RESPONDE ÚNICAMENTE con el siguiente JSON válido, sin texto adicional, sin explicaciones, sin ```json:
-{json_structure}"""
-
-        return prompt
-
-    def _build_platforms_requirements(self, platforms: list) -> str:
-        """Construye los requisitos específicos de cada plataforma."""
-
-        requirements = []
-
-        if 'shopify' in platforms:
-            requirements.append("""
-SHOPIFY:
-- title: Título atractivo máx 255 chars con marca y modelo
-- description_html: Descripción en HTML con <h2>, <ul><li>, <strong>. Mínimo 100 palabras
-- tags: Array de 8 tags relevantes en minúsculas
-- seo_title: Optimizado para Google, máx 70 chars
-- seo_description: Meta description, máx 160 chars""")
-
-        if 'mercadolibre' in platforms:
-            requirements.append("""
-MERCADO LIBRE (MUY IMPORTANTE):
-- title: MÁXIMO 60 CARACTERES incluyendo espacios. Fórmula: [Marca] [Producto] [Característica] [Modelo]
-- description: Texto plano SIN HTML. Entre 100-300 palabras
-- category_hint: Categoría sugerida en español
-- keywords: Array de 5 palabras clave más buscadas""")
-
-        if 'amazon' in platforms:
-            requirements.append("""
-AMAZON MÉXICO:
-- title: Fórmula: [Marca] [Producto] [Característica] [Color/Cantidad]. Máx 200 chars
-- bullet_points: Array de EXACTAMENTE 5 strings. Cada uno empieza con TÉRMINO EN MAYÚSCULAS seguido de dos puntos
-- description: 200-400 palabras optimizada para SEO
-- backend_keywords: Keywords separadas por espacio, sin repetir palabras del título. Máx 200 chars""")
-
-        return '\n'.join(requirements)
-
-    def _build_json_structure(self, platforms: list) -> str:
-        """Construye la estructura JSON esperada."""
-
-        parts = []
-
-        if 'shopify' in platforms:
-            parts.append('''{
-  "shopify": {
-    "title": "título aquí",
-    "description_html": "<h2>Características</h2><ul><li>punto 1</li></ul>",
-    "tags": ["tag1", "tag2", "tag3"],
-    "seo_title": "seo title aquí",
-    "seo_description": "meta description aquí"
-  }''')
-
-        if 'mercadolibre' in platforms:
-            parts.append('''{
-  "mercadolibre": {
-    "title": "título máx 60 chars",
-    "description": "descripción texto plano",
-    "category_hint": "categoría sugerida",
-    "keywords": ["keyword1", "keyword2"]
-  }''')
-
-        if 'amazon' in platforms:
-            parts.append('''{
-  "amazon": {
-    "title": "título amazon",
-    "bullet_points": ["PUNTO 1: descripción", "PUNTO 2: descripción", "PUNTO 3: descripción", "PUNTO 4: descripción", "PUNTO 5: descripción"],
-    "description": "descripción amazon",
-    "backend_keywords": "keywords backend"
-  }''')
-
-        # Si hay múltiples plataformas, combinarlas en un solo JSON
-        if len(platforms) == 1:
-            return parts[0]
-        else:
-            combined = "{\n"
-            platform_parts = []
-            for platform in platforms:
-                if platform == 'shopify':
-                    platform_parts.append('''  "shopify": {
-    "title": "título shopify",
-    "description_html": "<h2>Características</h2><ul><li>punto 1</li></ul>",
-    "tags": ["tag1", "tag2"],
-    "seo_title": "seo title",
-    "seo_description": "meta description"
-  }''')
-                elif platform == 'mercadolibre':
-                    platform_parts.append('''  "mercadolibre": {
-    "title": "título máx 60 chars",
-    "description": "descripción texto plano sin HTML",
-    "category_hint": "Categoría > Subcategoría",
-    "keywords": ["keyword1", "keyword2"]
-  }''')
-                elif platform == 'amazon':
-                    platform_parts.append('''  "amazon": {
-    "title": "título amazon máx 200 chars",
-    "bullet_points": ["COMPATIBILIDAD: descripción", "MATERIAL: descripción", "FUNCIÓN: descripción", "INSTALACIÓN: descripción", "INCLUYE: descripción"],
-    "description": "descripción amazon SEO",
-    "backend_keywords": "keywords sin repetir"
-  }''')
-
-            combined += ',\n'.join(platform_parts)
-            combined += '\n}'
-            return combined
-
-    # ═══════════════════════════════════════════════════════════
-    # PARSEAR RESPUESTA DE OLLAMA
-    # ═══════════════════════════════════════════════════════════
-
-    def _parse_response(self, response_text: str, platforms: list) -> dict:
-        """
-        Parsea la respuesta JSON de Ollama y valida campos críticos.
-
-        Ollama a veces agrega texto antes o después del JSON.
-        Buscamos el JSON dentro de la respuesta.
-        """
-        # Limpiar la respuesta
         clean_text = response_text.strip()
 
         # Remover backticks si los hay
@@ -269,80 +171,57 @@ AMAZON MÉXICO:
         elif '```' in clean_text:
             clean_text = clean_text.split('```')[1].split('```')[0].strip()
 
-        # Buscar el JSON entre llaves
+        # Buscar JSON entre llaves
         start = clean_text.find('{')
         end = clean_text.rfind('}')
 
         if start == -1 or end == -1:
-            raise ValueError(f"No se encontró JSON válido en la respuesta: {clean_text[:200]}")
+            raise ValueError(f"No se encontró JSON en la respuesta de Ollama")
 
         json_text = clean_text[start:end+1]
 
         try:
             data = json.loads(json_text)
-        except json.JSONDecodeError:
-            # Intentar reparar JSON común con Ollama
-            try:
-                # A veces Ollama pone comillas simples en lugar de dobles
-                json_text = json_text.replace("'", '"')
-                data = json.loads(json_text)
-            except json.JSONDecodeError as e:
-                raise ValueError(f"No se pudo parsear el JSON: {e}\nRespuesta: {json_text[:300]}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"JSON inválido: {e}\nRespuesta: {json_text[:200]}")
 
         # ─── Validaciones críticas ────────────────────────────
 
         # ML: título máx 60 chars
-        if 'mercadolibre' in data and 'title' in data['mercadolibre']:
-            ml_title = data['mercadolibre']['title']
-            if len(ml_title) > 60:
-                # Truncar en la última palabra completa
-                data['mercadolibre']['title'] = ml_title[:60].rsplit(' ', 1)[0]
-                data['mercadolibre']['title_truncated'] = True
+        if platform == 'mercadolibre' and 'title' in data:
+            if len(data['title']) > 60:
+                data['title'] = data['title'][:60].rsplit(' ', 1)[0]
 
         # Amazon: exactamente 5 bullet points
-        if 'amazon' in data and 'bullet_points' in data['amazon']:
-            bullets = data['amazon']['bullet_points']
+        if platform == 'amazon' and 'bullet_points' in data:
+            bullets = data['bullet_points']
             if len(bullets) > 5:
-                data['amazon']['bullet_points'] = bullets[:5]
-            elif len(bullets) < 5:
-                while len(data['amazon']['bullet_points']) < 5:
-                    data['amazon']['bullet_points'].append(
-                        "CALIDAD GARANTIZADA: Producto verificado y de alta calidad."
-                    )
-
-        # Metadata
-        data['generated_at'] = __import__('datetime').datetime.utcnow().isoformat()
-        data['platforms'] = platforms
-        data['model'] = self.MODEL
+                data['bullet_points'] = bullets[:5]
+            while len(data['bullet_points']) < 5:
+                data['bullet_points'].append("CALIDAD GARANTIZADA: Producto verificado de alta calidad.")
 
         return data
 
     # ═══════════════════════════════════════════════════════════
-    # MÉTODO: MEJORAR DESCRIPCIÓN EXISTENTE
+    # MEJORAR DESCRIPCIÓN
     # ═══════════════════════════════════════════════════════════
 
-    def improve_description(self, current_description: str, platform: str) -> str:
+    def improve_description(self, current_description, platform):
         """
         Mejora una descripción existente para una plataforma específica.
         """
-        platform_rules = {
+        rules = {
             'shopify': "en HTML con h2, ul, strong. Mínimo 100 palabras.",
-            'mercadolibre': "en texto plano SIN HTML. Entre 100-300 palabras.",
-            'amazon': "optimizada para SEO con keywords. 200-400 palabras."
-        }
+            'mercadolibre': "en texto plano SIN HTML. Entre 100-200 palabras.",
+            'amazon': "optimizada para SEO. 150-300 palabras."
+        }.get(platform, "clara y persuasiva")
 
-        rules = platform_rules.get(platform, "clara y persuasiva")
+        prompt = f"""Mejora esta descripción para {platform.upper()} en español de México.
 
-        prompt = f"""Eres un experto en e-commerce para LATAM. Mejora esta descripción para {platform.upper()}.
-
-Descripción actual:
-{current_description}
+Descripción actual: {current_description}
 
 Escribe la descripción mejorada {rules}
-Usa español de México natural y persuasivo.
-Enfócate en beneficios para el comprador.
-
-Responde ÚNICAMENTE con la descripción mejorada, sin explicaciones ni texto adicional."""
+Responde ÚNICAMENTE con la descripción, sin explicaciones."""
 
         try:
             response = requests.post(
@@ -351,44 +230,31 @@ Responde ÚNICAMENTE con la descripción mejorada, sin explicaciones ni texto ad
                     "model": self.MODEL,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"temperature": 0.7, "num_predict": 1000}
+                    "options": {"temperature": 0.7, "num_predict": 800}
                 },
                 timeout=60
             )
-
-            if response.status_code != 200:
-                raise ValueError(f"Error de Ollama: {response.status_code}")
-
             return response.json().get('response', '').strip()
-
-        except requests.exceptions.ConnectionError:
-            raise ValueError("No se pudo conectar con Ollama. Corre: ollama serve")
         except Exception as e:
             raise ValueError(f"Error al mejorar descripción: {str(e)}")
 
     # ═══════════════════════════════════════════════════════════
-    # VERIFICAR QUE OLLAMA ESTÁ CORRIENDO
+    # HEALTH CHECK
     # ═══════════════════════════════════════════════════════════
 
-    def health_check(self) -> tuple:
-        """
-        Verifica que Ollama está corriendo y el modelo está disponible.
-
-        Returns:
-            (success, message)
-        """
+    def health_check(self):
+        """Verifica que Ollama está corriendo y el modelo disponible."""
         try:
             response = requests.get("http://localhost:11434/api/tags", timeout=5)
             if response.status_code == 200:
                 models = [m['name'] for m in response.json().get('models', [])]
                 if self.MODEL in models:
                     return True, f"Ollama corriendo con modelo {self.MODEL}"
-                else:
-                    return False, f"Modelo {self.MODEL} no encontrado. Modelos disponibles: {models}"
-            return False, "Ollama no responde correctamente"
+                return False, f"Modelo {self.MODEL} no encontrado. Disponibles: {models}"
+            return False, "Ollama no responde"
         except requests.exceptions.ConnectionError:
-            return False, "Ollama no está corriendo. Ejecuta: ollama serve"
+            return False, "Ollama no está corriendo"
 
 
-# Instancia global del servicio
+# Instancia global
 ai_service = AIService()
