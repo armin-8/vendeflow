@@ -12,9 +12,22 @@ Los e-commerce managers en LATAM pierden horas sincronizando inventario manualme
 ```
 Odoo / SAP / Excel
        ↓
-   VendeFlow (Hub inteligente)
+   VendeFlow (Hub inteligente con IA)
        ↓
 Shopify / Mercado Libre / Amazon
+```
+
+---
+
+## 🏆 Hitos Logrados
+
+```
+3 Jul 2026 — PRIMER PRODUCTO PUBLICADO EN SHOPIFY CON IA 🎉
+  → Usuario llena nombre, SKU, precio (2 min)
+  → Llama 3.2 genera título, descripción HTML, tags, SEO (20 seg)
+  → Producto creado en Shopify como borrador ✅
+  → Ahorro: 48 minutos por producto
+  → Con 100 productos/mes → 80 horas ahorradas
 ```
 
 ---
@@ -34,13 +47,13 @@ Shopify / Mercado Libre / Amazon
 | Testing | 23/23 tests pasando (pytest) | ✅ |
 | Logs | Logs de sincronización con stats | ✅ |
 | Migraciones | Flask-Migrate configurado | ✅ |
-| V1.5 IA | Publicación multi-canal con Llama 3.2 (Ollama) | ✅ |
+| V1.5 IA | Publicación en Shopify con IA (Llama 3.2 local) | ✅ 🎉 |
 
 ### 🎯 Pendiente
 
 | Feature | Descripción | Prioridad |
 |---------|-------------|-----------|
-| Botón Publicar | Conectar "Publicar" con Shopify y ML | 🔴 Alta |
+| V1.5 IA ML | Publicar en Mercado Libre desde IA | 🔴 Alta |
 | Fase 6 | Integración Amazon | 🟡 Media |
 | V2 Analytics | Dashboard de ventas con IA | 🟡 Media |
 | Odoo | Integración como fuente de verdad | 🟡 Media |
@@ -50,10 +63,22 @@ Shopify / Mercado Libre / Amazon
 
 ## 🤖 Roadmap de IA
 
-### Capa 1 — Publicación Multi-Canal (V1.5) ✅
-Usuario sube producto → IA genera contenido optimizado → publica en todas las plataformas con 1 click.
+### Capa 1 — Publicación Multi-Canal (V1.5) ✅ ACTIVA
+Usuario llena datos básicos → IA genera contenido optimizado → publica en todas las plataformas.
 
 **Tecnología:** Llama 3.2 via Ollama (local, gratis, sin dependencias)
+
+**Funcionando:**
+- ✅ Shopify: título, descripción HTML, tags, SEO — publicación como borrador
+- 🔜 Mercado Libre: título máx 60 chars, descripción texto plano
+- 🔜 Amazon: 5 bullet points, backend keywords
+
+**Impacto:**
+```
+Sin IA:    50 min por producto
+Con IA:     2 min por producto
+Ahorro:    96% del tiempo ✅
+```
 
 ### Capa 2 — Analytics Inteligente (V2) 🔜
 ```
@@ -78,8 +103,8 @@ Chat dentro de VendeFlow para consultas en lenguaje natural sobre inventario y v
 - **ORM:** SQLAlchemy + Flask-Migrate
 - **Auth:** JWT (flask-jwt-extended)
 - **Seguridad:** Fernet AES-128 (cryptography)
-- **IA:** Llama 3.2 via Ollama (local)
-- **Testing:** pytest + pytest-flask
+- **IA:** Llama 3.2 via Ollama (local, gratis)
+- **Testing:** pytest + pytest-flask (23/23 ✅)
 
 ### Frontend
 - **Framework:** React + Vite
@@ -88,8 +113,8 @@ Chat dentro de VendeFlow para consultas en lenguaje natural sobre inventario y v
 - **HTTP:** Fetch API centralizado en api.js
 
 ### Integraciones
-- **Shopify:** OAuth 2.0 + REST API
-- **Mercado Libre:** OAuth 2.0 + refresh token automático
+- **Shopify:** OAuth 2.0 + REST API + publicación con IA ✅
+- **Mercado Libre:** OAuth 2.0 + refresh token automático ✅
 - **Amazon:** Próximamente (SP-API)
 
 ---
@@ -119,40 +144,28 @@ npm run dev
 
 ### IA (Ollama)
 ```bash
-# Verificar que Ollama está corriendo
+# Ollama arranca automáticamente con el Mac
+# Verificar que está corriendo:
 ollama list
 
-# Si no está corriendo
+# Si no está corriendo:
 ollama serve
 ```
 
 ### Variables de entorno (.env)
 ```bash
-# Flask
 FLASK_APP=run.py
 FLASK_DEBUG=1
 SECRET_KEY=tu-secret-key
-
-# JWT
 JWT_SECRET_KEY=tu-jwt-secret-key
-
-# Database
 DATABASE_URL=sqlite:///vendeflow_dev.db
-
-# CORS
 FRONTEND_URL=http://localhost:5173
-
-# Shopify OAuth
 SHOPIFY_API_KEY=tu-shopify-api-key
 SHOPIFY_API_SECRET=tu-shopify-api-secret
 SHOPIFY_REDIRECT_URI=http://localhost:5001/api/shopify/callback
-
-# Mercado Libre OAuth
 MERCADOLIBRE_APP_ID=tu-ml-app-id
 MERCADOLIBRE_SECRET_KEY=tu-ml-secret-key
 MERCADOLIBRE_REDIRECT_URI=https://tu-ngrok-url/api/mercadolibre/callback
-
-# Seguridad
 ENCRYPTION_KEY=tu-fernet-key
 ```
 
@@ -172,12 +185,12 @@ vendeflow/
 │   │   ├── routes/
 │   │   │   ├── auth_routes.py
 │   │   │   ├── inventory_routes.py
-│   │   │   ├── shopify_routes.py
+│   │   │   ├── shopify_routes.py       # + create-product IA
 │   │   │   ├── mercadolibre_routes.py
-│   │   │   ├── ai_routes.py            # IA endpoints
+│   │   │   ├── ai_routes.py            # /api/ai/*
 │   │   │   └── logs_routes.py
 │   │   ├── services/
-│   │   │   ├── shopify_service.py
+│   │   │   ├── shopify_service.py      # + create_product()
 │   │   │   ├── mercadolibre_service.py
 │   │   │   └── ai_service.py           # Llama 3.2 via Ollama
 │   │   └── utils/
@@ -187,10 +200,8 @@ vendeflow/
 │   │   ├── conftest.py
 │   │   ├── test_auth.py                # 10 tests
 │   │   └── test_inventory.py           # 13 tests
-│   ├── migrations/                     # Flask-Migrate
+│   ├── migrations/
 │   └── scripts/
-│       ├── encrypt_existing_tokens.py
-│       └── vincular_ml.py
 ├── frontend/
 │   └── src/
 │       ├── pages/
@@ -198,12 +209,12 @@ vendeflow/
 │       │   ├── Inventory.jsx
 │       │   ├── Integrations.jsx
 │       │   ├── Import.jsx
-│       │   └── Publish.jsx             # IA publicación
+│       │   └── Publish.jsx             # IA → Shopify ✅
 │       ├── components/
 │       │   ├── ProductTable.jsx        # Botón sync por SKU
 │       │   └── Navbar.jsx
 │       └── services/
-│           └── api.js                  # Servicios centralizados
+│           └── api.js
 └── README.md
 ```
 
@@ -213,18 +224,37 @@ vendeflow/
 
 - Tokens de Shopify y ML encriptados con **Fernet AES-128** en la BD
 - JWT para autenticación de rutas protegidas
-- Variables sensibles solo en `.env` (nunca en el código)
+- Variables sensibles solo en `.env`
 - GitHub Push Protection activado
+- Productos siempre como **borrador** antes de publicar
 
 ---
 
 ## 📋 Requisitos de Publicación por Plataforma
 
-| Plataforma | Título | Descripción | Imágenes |
-|------------|--------|-------------|----------|
-| Shopify | Máx 255 chars | HTML permitido | JPG/PNG |
-| Mercado Libre | **Máx 60 chars** ⚠️ | Texto plano, sin HTML | Mín 500x500px |
-| Amazon | Máx 200 chars | 5 bullet points | Fondo blanco obligatorio |
+| Plataforma | Título | Descripción | Notas |
+|------------|--------|-------------|-------|
+| Shopify | Máx 255 chars | HTML permitido | Publicación IA ✅ |
+| Mercado Libre | **Máx 60 chars** ⚠️ | Texto plano, sin HTML | Próximamente |
+| Amazon | Máx 200 chars | 5 bullet points | Próximamente |
+
+---
+
+## 📝 Decisiones Técnicas
+
+- **Ollama en lugar de Anthropic API** → gratis, local, sin dependencias
+- **Una llamada por plataforma** → evita JSON truncado por límite de tokens
+- **Tokens encriptados en BD** → seguridad en reposo
+- **Flask-Migrate** → nunca más borrar la BD para cambiar modelos
+- **Productos como borrador** → el usuario revisa antes de activar en Shopify
+- **Refresh token automático en ML** → tokens duran 6h, se renuevan sin que el usuario note
+
+## 🐛 Problemas Resueltos
+
+- ML no acepta `localhost` → usar ngrok para desarrollo
+- JSON truncado en Ollama → generar por plataforma, no todo junto
+- Tokens en texto plano → Fernet AES-128
+- BD se rompía al agregar columnas → Flask-Migrate
 
 ---
 
@@ -235,22 +265,4 @@ vendeflow/
 
 ---
 
-## 📝 Notas de Desarrollo
-
-### Decisiones técnicas importantes
-- **Ollama en lugar de Anthropic API** → gratis, local, sin dependencias externas
-- **Una llamada por plataforma** → evita JSON truncado por límite de tokens
-- **Tokens encriptados en BD** → seguridad en reposo
-- **Flask-Migrate** → nunca más borrar la BD para cambiar modelos
-- **SyncButton independiente por fila** → cada producto tiene su propio estado de loading
-- **Refresh token automático en ML** → tokens duran 6h, se renuevan sin que el usuario note
-
-### Problemas resueltos
-- ML no acepta `localhost` → usar ngrok para desarrollo
-- JSON truncado en Ollama → generar por plataforma, no todo junto
-- Tokens en texto plano → Fernet AES-128
-- BD se rompía al agregar columnas → Flask-Migrate
-
----
-
-*Última actualización: Julio 2026*
+*Última actualización: 3 Julio 2026 — Primer producto publicado en Shopify con IA 🎉*
