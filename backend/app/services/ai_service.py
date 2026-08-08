@@ -2,128 +2,160 @@
 VendeFlow - Servicio de Inteligencia Artificial con Ollama
 ===========================================================
 
-Usa Ollama (local) para generar contenido optimizado de productos
-para cada plataforma de e-commerce. Corre 100% en tu Mac, sin
-costos ni dependencias externas.
+Usa Ollama (local) para generar contenido optimizado de productos.
 
-MODELO USADO: llama3.2:latest
-  → 2GB, rápido en Mac M1/M2/M3
-  → Excelente para generación de texto en español
+FILOSOFÍA DE LA IA EN VENDEFLOW:
+---------------------------------
+1. El título es SAGRADO → siempre usa exactamente el nombre del usuario
+2. La descripción base es la MATERIA PRIMA → la IA la convierte en
+   contenido profesional y atractivo para cada plataforma
+3. La IA NO inventa información → solo organiza, mejora y optimiza
+   lo que el usuario proporcionó
+
+MODELO: llama3.2:latest (local, gratis, sin dependencias)
 """
 
 import json
+import datetime
 import requests
 
 
 class AIService:
-    """
-    Servicio de IA para generación de contenido de productos.
-    Usa Ollama corriendo localmente en el puerto 11434.
-    """
 
     OLLAMA_URL = "http://localhost:11434/api/generate"
     MODEL = "llama3.2:latest"
 
     # ═══════════════════════════════════════════════════════════
-    # MÉTODO PRINCIPAL: GENERAR LISTING MULTI-PLATAFORMA
+    # MÉTODO PRINCIPAL
     # ═══════════════════════════════════════════════════════════
 
     def generate_listing(self, name, description='', category='', brand='', price=0.0, platforms=None):
         """
-        Genera contenido optimizado para múltiples plataformas con Ollama.
+        Genera contenido profesional para múltiples plataformas.
+
+        REGLA DE ORO:
+        - El nombre del producto NUNCA se modifica
+        - La descripción se transforma en contenido profesional
+        - La IA organiza y mejora, nunca inventa
         """
         if platforms is None:
             platforms = ['shopify', 'mercadolibre', 'amazon']
 
-        # ─── MEJORA CLAVE ────────────────────────────────────
-        # Pedimos por plataforma de forma independiente para evitar
-        # que el JSON quede truncado por límite de tokens.
-        # Es más confiable que pedir todo en una sola llamada.
-        # ─────────────────────────────────────────────────────
         result = {}
-
         for platform in platforms:
             try:
-                platform_result = self._generate_for_platform(
+                result[platform] = self._generate_for_platform(
                     platform, name, description, category, brand, price
                 )
-                result[platform] = platform_result
             except Exception as e:
                 result[platform] = {'error': str(e)}
 
-        import datetime
         result['generated_at'] = datetime.datetime.utcnow().isoformat()
         result['platforms'] = platforms
         result['model'] = self.MODEL
-
         return result
 
+    # ═══════════════════════════════════════════════════════════
+    # GENERAR POR PLATAFORMA
+    # ═══════════════════════════════════════════════════════════
+
     def _generate_for_platform(self, platform, name, description, category, brand, price):
-        """
-        Genera contenido para UNA sola plataforma.
+        """Genera contenido profesional para una plataforma específica."""
 
-        ¿POR QUÉ UNA PLATAFORMA A LA VEZ?
-        ------------------------------------
-        Llama 3.2 tiene un límite de contexto. Si pedimos Shopify +
-        ML + Amazon juntos, el JSON queda truncado e inválido.
-        Al pedir de uno en uno, cada respuesta es corta y completa.
-        """
         prompts = {
-            'shopify': f"""Eres experto en e-commerce LATAM. Genera contenido para Shopify en español de México.
 
-Producto: {name}
-Descripción base: {description or 'No proporcionada'}
+            # ─── SHOPIFY ──────────────────────────────────────
+            # El título es EXACTAMENTE el nombre del usuario.
+            # La descripción se convierte en HTML profesional y atractivo.
+            # ─────────────────────────────────────────────────
+            'shopify': f"""Eres un copywriter experto en e-commerce para LATAM con 10 años de experiencia.
+Tu misión: convertir información técnica en descripciones irresistibles que convencen al comprador.
+
+PRODUCTO:
+Nombre: {name}
+Información del producto: {description or 'No proporcionada'}
 Categoría: {category or 'No especificada'}
 Marca: {brand or 'No especificada'}
 Precio: ${price:.2f} MXN
 
-Genera un JSON con exactamente esta estructura (sin texto adicional, sin explicaciones):
+INSTRUCCIONES:
+1. El campo "title" debe ser EXACTAMENTE: "{name}" (no lo cambies, no lo modifiques)
+2. Crea una descripción HTML profesional y atractiva basada en la información del producto
+3. La descripción debe convencer al comprador destacando beneficios reales
+4. Usa solo información que esté en la descripción proporcionada, no inventes
+5. Estructura: introducción atractiva, características clave, beneficios para el usuario
+
+Genera ÚNICAMENTE este JSON (sin texto adicional, sin explicaciones, sin ```):
 {{
-  "title": "título atractivo máximo 255 caracteres",
-  "description_html": "<h2>Características</h2><ul><li>característica 1</li><li>característica 2</li><li>característica 3</li></ul><h2>Beneficios</h2><ul><li>beneficio 1</li><li>beneficio 2</li></ul>",
-  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-  "seo_title": "título SEO máximo 70 caracteres",
-  "seo_description": "meta description máximo 160 caracteres"
+  "title": "{name}",
+  "description_html": "<h2>Descripción atractiva aquí</h2><p>Párrafo introductorio convincente</p><h2>Características Principales</h2><ul><li><strong>Característica 1:</strong> descripción</li><li><strong>Característica 2:</strong> descripción</li></ul><h2>¿Por qué elegirlo?</h2><ul><li>Beneficio 1 orientado al comprador</li><li>Beneficio 2 orientado al comprador</li></ul>",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6"],
+  "seo_title": "título SEO máximo 70 caracteres con keywords principales",
+  "seo_description": "meta description atractiva máximo 160 caracteres que invita al clic"
 }}""",
 
-            'mercadolibre': f"""Eres experto en e-commerce LATAM. Genera contenido para Mercado Libre México en español.
+            # ─── MERCADO LIBRE ────────────────────────────────
+            # Título MÁXIMO 60 chars con keywords al inicio.
+            # Descripción en texto plano, directa y persuasiva.
+            # ─────────────────────────────────────────────────
+            'mercadolibre': f"""Eres experto en Mercado Libre México con 10 años optimizando listings.
+Conoces el algoritmo de búsqueda de ML y cómo posicionar productos.
 
-Producto: {name}
-Descripción base: {description or 'No proporcionada'}
+PRODUCTO:
+Nombre base: {name}
+Información: {description or 'No proporcionada'}
 Categoría: {category or 'No especificada'}
 Marca: {brand or 'No especificada'}
 Precio: ${price:.2f} MXN
 
-IMPORTANTE: El título DEBE tener MÁXIMO 60 caracteres contando espacios.
+INSTRUCCIONES:
+1. El título DEBE tener MÁXIMO 60 CARACTERES (cuenta cada espacio y letra)
+2. Pon las palabras más buscadas AL INICIO del título
+3. La descripción debe ser texto plano SIN HTML, persuasiva y clara
+4. Usa solo información real del producto, no inventes especificaciones
+5. Los keywords deben ser los términos que los compradores buscan en ML
 
-Genera un JSON con exactamente esta estructura (sin texto adicional, sin explicaciones):
+Genera ÚNICAMENTE este JSON (sin texto adicional, sin explicaciones, sin ```):
 {{
-  "title": "título máximo 60 caracteres aquí",
-  "description": "descripción en texto plano sin HTML entre 100 y 200 palabras aquí",
-  "category_hint": "Categoría sugerida",
+  "title": "título exactamente máximo 60 chars aquí",
+  "description": "descripción profesional en texto plano entre 150 y 300 palabras que convence al comprador sin usar HTML",
+  "category_hint": "Categoría > Subcategoría sugerida",
   "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
 }}""",
 
-            'amazon': f"""Eres experto en e-commerce LATAM. Genera contenido para Amazon México en español.
+            # ─── AMAZON ───────────────────────────────────────
+            # Título con fórmula Amazon.
+            # 5 bullet points que convierten visitas en ventas.
+            # ─────────────────────────────────────────────────
+            'amazon': f"""Eres experto en Amazon México con 10 años optimizando listings para el algoritmo A9/A10.
+Sabes exactamente cómo escribir bullet points que convierten visitas en ventas.
 
-Producto: {name}
-Descripción base: {description or 'No proporcionada'}
+PRODUCTO:
+Nombre: {name}
+Información: {description or 'No proporcionada'}
 Categoría: {category or 'No especificada'}
 Marca: {brand or 'No especificada'}
 Precio: ${price:.2f} MXN
 
-Genera un JSON con exactamente esta estructura (sin texto adicional, sin explicaciones):
+INSTRUCCIONES:
+1. El título debe seguir la fórmula Amazon: [Marca] [Producto] [Característica principal] [Modelo]
+2. Los 5 bullet points deben empezar con TÉRMINO EN MAYÚSCULAS seguido de dos puntos
+3. Cada bullet debe enfocarse en UN beneficio específico para el comprador
+4. La descripción debe incluir keywords naturalmente para SEO
+5. Los backend_keywords no deben repetir palabras ya usadas en el título
+
+Genera ÚNICAMENTE este JSON (sin texto adicional, sin explicaciones, sin ```):
 {{
-  "title": "título máximo 200 caracteres con marca y modelo",
+  "title": "título Amazon máximo 200 chars con marca modelo y característica principal",
   "bullet_points": [
-    "BENEFICIO 1: descripción del primer beneficio",
-    "BENEFICIO 2: descripción del segundo beneficio",
-    "BENEFICIO 3: descripción del tercer beneficio",
-    "BENEFICIO 4: descripción del cuarto beneficio",
-    "BENEFICIO 5: descripción del quinto beneficio"
+    "CARACTERÍSTICA PRINCIPAL: descripción del beneficio más importante para el comprador",
+    "TECNOLOGÍA/MATERIAL: descripción de la tecnología o material y su beneficio",
+    "COMPATIBILIDAD/USO: para quién es ideal y en qué situaciones",
+    "GARANTÍA/CALIDAD: respaldo de calidad y confianza",
+    "INCLUYE/CONTENIDO: qué viene en el paquete o qué valor adicional ofrece"
   ],
-  "description": "descripción optimizada para SEO de 200 palabras",
-  "backend_keywords": "keywords separadas por espacio sin repetir del título"
+  "description": "descripción SEO de 200-400 palabras con keywords integradas naturalmente",
+  "backend_keywords": "keywords adicionales separadas por espacio sin repetir del título máximo 200 chars"
 }}"""
         }
 
@@ -140,17 +172,25 @@ Genera un JSON con exactamente esta estructura (sin texto adicional, sin explica
                     "stream": False,
                     "options": {
                         "temperature": 0.7,
-                        "num_predict": 1500  # Suficiente para 1 plataforma
+                        "num_predict": 2000
                     }
                 },
-                timeout=120
+                timeout=180
             )
 
             if response.status_code != 200:
                 raise ValueError(f"Error de Ollama: {response.status_code}")
 
             response_text = response.json().get('response', '')
-            return self._parse_response(response_text, platform)
+            result = self._parse_response(response_text, platform)
+
+            # ─── GARANTIZAR TÍTULO EXACTO EN SHOPIFY ──────────
+            # Por seguridad, aunque el prompt lo dice, forzamos
+            # el título exacto del usuario en el resultado final.
+            if platform == 'shopify':
+                result['title'] = name
+
+            return result
 
         except requests.exceptions.ConnectionError:
             raise ValueError("Ollama no está corriendo. Verifica que esté activo.")
@@ -160,23 +200,20 @@ Genera un JSON con exactamente esta estructura (sin texto adicional, sin explica
     # ═══════════════════════════════════════════════════════════
 
     def _parse_response(self, response_text, platform):
-        """
-        Parsea el JSON de Ollama y valida campos críticos.
-        """
+        """Parsea el JSON de Ollama y valida campos críticos."""
         clean_text = response_text.strip()
 
-        # Remover backticks si los hay
+        # Limpiar backticks
         if '```json' in clean_text:
             clean_text = clean_text.split('```json')[1].split('```')[0].strip()
         elif '```' in clean_text:
             clean_text = clean_text.split('```')[1].split('```')[0].strip()
 
-        # Buscar JSON entre llaves
+        # Extraer JSON
         start = clean_text.find('{')
         end = clean_text.rfind('}')
-
         if start == -1 or end == -1:
-            raise ValueError(f"No se encontró JSON en la respuesta de Ollama")
+            raise ValueError("No se encontró JSON en la respuesta de Ollama")
 
         json_text = clean_text[start:end+1]
 
@@ -187,7 +224,7 @@ Genera un JSON con exactamente esta estructura (sin texto adicional, sin explica
 
         # ─── Validaciones críticas ────────────────────────────
 
-        # ML: título máx 60 chars
+        # ML: título máx 60 chars — crítico para que no se corte
         if platform == 'mercadolibre' and 'title' in data:
             if len(data['title']) > 60:
                 data['title'] = data['title'][:60].rsplit(' ', 1)[0]
@@ -198,30 +235,38 @@ Genera un JSON con exactamente esta estructura (sin texto adicional, sin explica
             if len(bullets) > 5:
                 data['bullet_points'] = bullets[:5]
             while len(data['bullet_points']) < 5:
-                data['bullet_points'].append("CALIDAD GARANTIZADA: Producto verificado de alta calidad.")
+                data['bullet_points'].append(
+                    "CALIDAD GARANTIZADA: Producto verificado y de alta calidad para tu satisfacción."
+                )
 
         return data
 
     # ═══════════════════════════════════════════════════════════
-    # MEJORAR DESCRIPCIÓN
+    # MEJORAR DESCRIPCIÓN EXISTENTE
     # ═══════════════════════════════════════════════════════════
 
     def improve_description(self, current_description, platform):
-        """
-        Mejora una descripción existente para una plataforma específica.
-        """
+        """Convierte una descripción técnica en contenido profesional."""
         rules = {
-            'shopify': "en HTML con h2, ul, strong. Mínimo 100 palabras.",
-            'mercadolibre': "en texto plano SIN HTML. Entre 100-200 palabras.",
-            'amazon': "optimizada para SEO. 150-300 palabras."
-        }.get(platform, "clara y persuasiva")
+            'shopify': "en HTML con h2, p, ul, strong. Mínima 150 palabras. Profesional y atractiva.",
+            'mercadolibre': "en texto plano SIN HTML. Entre 150-300 palabras. Clara y persuasiva.",
+            'amazon': "optimizada para SEO con keywords. 200-400 palabras."
+        }.get(platform, "clara, profesional y persuasiva")
 
-        prompt = f"""Mejora esta descripción para {platform.upper()} en español de México.
+        prompt = f"""Eres un copywriter experto en e-commerce LATAM.
+Convierte esta información en una descripción profesional y atractiva para {platform.upper()}.
 
-Descripción actual: {current_description}
+Información del producto:
+{current_description}
 
-Escribe la descripción mejorada {rules}
-Responde ÚNICAMENTE con la descripción, sin explicaciones."""
+REGLAS:
+- Escribe {rules}
+- Usa español de México natural y persuasivo
+- Enfócate en beneficios para el comprador
+- No inventes información que no esté en el texto original
+- Hazla irresistible para el comprador
+
+Responde ÚNICAMENTE con la descripción mejorada, sin explicaciones ni texto adicional."""
 
         try:
             response = requests.post(
@@ -230,9 +275,9 @@ Responde ÚNICAMENTE con la descripción, sin explicaciones."""
                     "model": self.MODEL,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"temperature": 0.7, "num_predict": 800}
+                    "options": {"temperature": 0.7, "num_predict": 1500}
                 },
-                timeout=60
+                timeout=120
             )
             return response.json().get('response', '').strip()
         except Exception as e:
