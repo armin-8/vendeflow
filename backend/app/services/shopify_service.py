@@ -6,7 +6,7 @@ Este servicio maneja:
 1. Flujo OAuth para conectar tiendas
 2. Comunicación con la API de Shopify
 3. Sincronización de productos e inventario
-4. Creación de productos desde la IA
+4. Creación de productos desde la IA con imágenes
 """
 
 import os
@@ -18,9 +18,6 @@ from urllib.parse import urlencode
 
 
 class ShopifyService:
-    """
-    Servicio para interactuar con la API de Shopify usando OAuth.
-    """
 
     def __init__(self):
         self.api_key = os.getenv('SHOPIFY_API_KEY')
@@ -46,11 +43,7 @@ class ShopifyService:
     def exchange_code_for_token(self, shop_name: str, code: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         shop_name = shop_name.replace('.myshopify.com', '').strip()
         url = f"https://{shop_name}.myshopify.com/admin/oauth/access_token"
-        payload = {
-            'client_id': self.api_key,
-            'client_secret': self.api_secret,
-            'code': code,
-        }
+        payload = {'client_id': self.api_key, 'client_secret': self.api_secret, 'code': code}
         try:
             response = requests.post(url, json=payload, timeout=10)
             if response.status_code == 200:
@@ -190,37 +183,59 @@ class ShopifyService:
             return False, f"Error de conexión: {str(e)}"
 
     # ═══════════════════════════════════════════════════════════
-    # API: CREAR PRODUCTO EN SHOPIFY (desde IA)
+    # API: CREAR PRODUCTO EN SHOPIFY (desde IA) con imágenes
     # ═══════════════════════════════════════════════════════════
 
     def create_product(self, shop_name: str, access_token: str, product_data: dict) -> Tuple[Optional[Dict], Optional[str]]:
         """
-        Crea un nuevo producto en Shopify con el contenido generado por la IA.
+        Crea un producto en Shopify con contenido de IA e imágenes.
 
-        ¿POR QUÉ STATUS "DRAFT"?
-        --------------------------
-        Siempre creamos el producto como borrador primero.
-        El usuario lo revisa en el admin de Shopify y lo activa cuando esté listo.
-        Esto evita publicar accidentalmente un producto incompleto.
+        CAMPOS SOPORTADOS:
+        ------------------
+        title          → Título del producto
+        body_html      → Descripción en HTML (generada por IA)
+        vendor         → Marca
+        product_type   → Categoría
+        tags           → Lista de tags
+        sku            → SKU único
+        price          → Precio en MXN
+        quantity       → Stock inicial
+        weight         → Peso (para cálculo de envío)
+        weight_unit    → 'kg', 'g', 'lb', 'oz'
+        barcode        → Código de barras (EAN, UPC, ISBN)
+        seo_title      → Meta title (max 70 chars)
+        seo_description→ Meta description (max 160 chars)
+        image_urls     → Lista de URLs de imágenes
+                         Shopify recomienda 2048x2048px
+                         La primera URL es la imagen principal
 
-        ¿POR QUÉ "variants"?
-        ---------------------
-        Shopify agrupa precio, SKU y stock dentro de "variants".
-        Un producto puede tener múltiples variantes (talla, color, etc.)
-        Nosotros creamos solo 1 variante (el producto base).
-
-        Args:
-            shop_name:    Nombre de la tienda (sin .myshopify.com)
-            access_token: Token de acceso OAuth
-            product_data: {
-                title, body_html, vendor, product_type,
-                tags, sku, price, quantity,
-                seo_title, seo_description
-            }
+        ¿POR QUÉ DRAFT?
+        ----------------
+        El producto se crea como borrador para que el usuario
+        lo revise y active en el admin de Shopify.
         """
         shop_name = shop_name.replace('.myshopify.com', '').strip()
         headers = {'X-Shopify-Access-Token': access_token, 'Content-Type': 'application/json'}
 
+        # ─── Construir variante ───────────────────────────────
+        variant = {
+            "sku": product_data.get('sku', ''),
+            "price": str(product_data.get('price', '0.00')),
+            "inventory_management": "shopify",
+            "inventory_quantity": int(product_data.get('quantity', 0)),
+            "fulfillment_service": "manual",
+        }
+
+        # Peso (opcional pero recomendado para cálculo de envío)
+        if product_data.get('weight'):
+            variant['weight'] = float(product_data.get('weight', 0))
+            variant['weight_unit'] = product_data.get('weight_unit', 'kg')
+
+        # Código de barras (opcional)
+        if product_data.get('barcode'):
+            variant['barcode'] = product_data.get('barcode', '')
+
+        # ─── Construir payload principal ─────────────────────
         payload = {
             "product": {
                 "title": product_data.get('title', ''),
@@ -228,16 +243,8 @@ class ShopifyService:
                 "vendor": product_data.get('vendor', ''),
                 "product_type": product_data.get('product_type', ''),
                 "tags": ', '.join(product_data.get('tags', [])),
-                "status": "draft",  # Siempre borrador primero ✅
-                "variants": [
-                    {
-                        "sku": product_data.get('sku', ''),
-                        "price": str(product_data.get('price', '0.00')),
-                        "inventory_management": "shopify",
-                        "inventory_quantity": int(product_data.get('quantity', 0)),
-                        "fulfillment_service": "manual"
-                    }
-                ],
+                "status": "draft",
+                "variants": [variant],
                 "metafields": [
                     {
                         "namespace": "global",
@@ -254,6 +261,25 @@ class ShopifyService:
                 ]
             }
         }
+
+        # ─── IMÁGENES ─────────────────────────────────────────
+        # Shopify descarga las imágenes desde las URLs automáticamente.
+        # Recomienda 2048x2048px JPG o PNG para alta calidad.
+        # La primera imagen de la lista es la imagen principal del producto.
+        #
+        # Shopify las procesa y almacena en su CDN → no importa
+        # el tamaño original, pero a mayor resolución mejor calidad.
+        # ─────────────────────────────────────────────────────
+        image_urls = product_data.get('image_urls', [])
+        if image_urls:
+            payload["product"]["images"] = [
+                {
+                    "src": url.strip(),
+                    "alt": product_data.get('title', '')
+                }
+                for url in image_urls
+                if url and url.strip()
+            ]
 
         try:
             url = f"https://{shop_name}.myshopify.com/admin/api/{self.api_version}/products.json"

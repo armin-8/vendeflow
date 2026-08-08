@@ -3,10 +3,10 @@
  * ==========================================
  * 
  * Flujo:
- * 1. Usuario llena datos básicos (nombre, SKU, precio, stock, marca, categoría)
+ * 1. Usuario llena datos básicos + URLs de imágenes
  * 2. IA genera contenido optimizado por plataforma
  * 3. Usuario revisa y edita (human in the loop)
- * 4. Usuario publica en Shopify como BORRADOR para revisión final
+ * 4. Usuario publica en Shopify como BORRADOR
  */
 
 import { useState } from 'react'
@@ -14,7 +14,6 @@ import { shopifyService } from '../services/api'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
-// ─── Servicio de IA ───────────────────────────────────────
 const aiService = {
   generateListing: async (data) => {
     const authData = JSON.parse(localStorage.getItem('vendeflow-auth') || '{}')
@@ -28,6 +27,92 @@ const aiService = {
     if (!response.ok) throw new Error(result.error || 'Error al generar contenido')
     return result
   }
+}
+
+// ─── Componente: Sección de Imágenes ─────────────────────
+function ImageSection({ imageUrls, onChange }) {
+  const [newUrl, setNewUrl] = useState('')
+
+  const addImage = () => {
+    const url = newUrl.trim()
+    if (!url) return
+    if (imageUrls.includes(url)) return
+    onChange([...imageUrls, url])
+    setNewUrl('')
+  }
+
+  const removeImage = (index) => {
+    onChange(imageUrls.filter((_, i) => i !== index))
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addImage() }
+  }
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Imágenes del Producto
+      </label>
+      <p className="text-xs text-gray-500 mb-2">
+        Shopify recomienda <strong>2048x2048px</strong> JPG o PNG.
+        La primera imagen es la principal.
+      </p>
+
+      {/* Input para agregar URL */}
+      <div className="flex gap-2 mb-3">
+        <input
+          type="url"
+          value={newUrl}
+          onChange={(e) => setNewUrl(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="https://ejemplo.com/imagen.jpg"
+          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          type="button"
+          onClick={addImage}
+          disabled={!newUrl.trim()}
+          className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+        >
+          + Agregar
+        </button>
+      </div>
+
+      {/* Preview de imágenes agregadas */}
+      {imageUrls.length > 0 && (
+        <div className="space-y-2">
+          {imageUrls.map((url, index) => (
+            <div key={index} className="flex items-center gap-3 bg-gray-50 rounded-lg p-2">
+              {/* Preview de la imagen */}
+              <img
+                src={url}
+                alt={`Imagen ${index + 1}`}
+                className="w-12 h-12 object-cover rounded-lg border border-gray-200"
+                onError={(e) => { e.target.src = 'https://via.placeholder.com/48?text=?' }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-600 truncate">{url}</p>
+                {index === 0 && (
+                  <span className="text-xs text-green-600 font-medium">⭐ Imagen principal</span>
+                )}
+              </div>
+              <button
+                onClick={() => removeImage(index)}
+                className="text-red-400 hover:text-red-600 text-lg font-bold flex-shrink-0"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {imageUrls.length === 0 && (
+        <p className="text-xs text-gray-400 italic">Sin imágenes agregadas (opcional)</p>
+      )}
+    </div>
+  )
 }
 
 // ─── Preview por Plataforma ───────────────────────────────
@@ -133,6 +218,8 @@ export default function Publish() {
   const [form, setForm] = useState({
     name: '', description: '', category: '', brand: '',
     price: '', sku: '', quantity: '',
+    weight: '', barcode: '',
+    imageUrls: [],
     platforms: ['shopify']
   })
 
@@ -157,7 +244,6 @@ export default function Publish() {
     setListing(prev => ({ ...prev, [platform]: { ...prev[platform], [field]: value } }))
   }
 
-  // Generar contenido con IA
   const handleGenerate = async () => {
     if (!form.name.trim()) return setError('El nombre del producto es requerido')
     if (form.platforms.length === 0) return setError('Selecciona al menos una plataforma')
@@ -183,7 +269,6 @@ export default function Publish() {
     }
   }
 
-  // Publicar en Shopify como borrador
   const handlePublishShopify = async () => {
     if (!form.sku.trim()) return setError('El SKU es requerido para publicar')
     if (!form.price) return setError('El precio es requerido para publicar')
@@ -202,8 +287,12 @@ export default function Publish() {
         sku: form.sku.toUpperCase(),
         price: parseFloat(form.price) || 0,
         quantity: parseInt(form.quantity) || 0,
+        weight: parseFloat(form.weight) || 0,
+        weight_unit: 'kg',
+        barcode: form.barcode || '',
         seo_title: shopifyData.seo_title || '',
-        seo_description: shopifyData.seo_description || ''
+        seo_description: shopifyData.seo_description || '',
+        image_urls: form.imageUrls   // ← imágenes enviadas a Shopify
       })
 
       setMessage({
@@ -228,13 +317,11 @@ export default function Publish() {
         <p className="text-gray-600">La IA genera contenido optimizado para cada plataforma. Tú revisas y publicas.</p>
       </div>
 
-      {/* Mensaje */}
       {message && (
         <div className={`mb-6 p-4 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
           {message.text}
           {message.link && (
-            <a href={message.link} target="_blank" rel="noreferrer"
-              className="ml-2 underline font-medium">
+            <a href={message.link} target="_blank" rel="noreferrer" className="ml-2 underline font-medium">
               Ver en Shopify →
             </a>
           )}
@@ -253,7 +340,7 @@ export default function Publish() {
 
         {/* ─── Formulario ─────────────────────────────────── */}
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-24">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-24 max-h-screen overflow-y-auto">
             <h2 className="font-semibold text-gray-900 mb-4">📝 Datos del Producto</h2>
             <div className="space-y-4">
 
@@ -264,7 +351,6 @@ export default function Publish() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
               </div>
 
-              {/* SKU y Stock en la misma fila */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">SKU <span className="text-red-500">*</span></label>
@@ -285,6 +371,21 @@ export default function Publish() {
                 <input type="number" value={form.price} onChange={(e) => handleFormChange('price', e.target.value)}
                   placeholder="899.00"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Peso (kg)</label>
+                  <input type="number" value={form.weight} onChange={(e) => handleFormChange('weight', e.target.value)}
+                    placeholder="0.5"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Código de barras</label>
+                  <input type="text" value={form.barcode} onChange={(e) => handleFormChange('barcode', e.target.value)}
+                    placeholder="EAN / UPC"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
+                </div>
               </div>
 
               <div>
@@ -308,6 +409,12 @@ export default function Publish() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
 
+              {/* ─── Imágenes ─────────────────────────────── */}
+              <ImageSection
+                imageUrls={form.imageUrls}
+                onChange={(urls) => handleFormChange('imageUrls', urls)}
+              />
+
               {/* Plataformas */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Plataformas</label>
@@ -327,7 +434,6 @@ export default function Publish() {
                 </div>
               </div>
 
-              {/* Botón Generar */}
               <button onClick={handleGenerate} disabled={loading || !form.name.trim()}
                 className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                 {loading ? (
@@ -338,7 +444,7 @@ export default function Publish() {
                 ) : <>🤖 Generar con IA</>}
               </button>
 
-              {loading && <p className="text-xs text-gray-500 text-center">Llama está analizando tu producto... (15-30 segundos)</p>}
+              {loading && <p className="text-xs text-gray-500 text-center">Llama está analizando... (15-30 seg)</p>}
             </div>
           </div>
         </div>
@@ -357,7 +463,7 @@ export default function Publish() {
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
               <h3 className="text-lg font-medium text-gray-700 mb-2">Generando contenido...</h3>
-              <p className="text-gray-500 text-sm">Llama 3.2 está optimizando para {form.platforms.length} plataforma{form.platforms.length !== 1 ? 's' : ''}.</p>
+              <p className="text-gray-500 text-sm">Llama 3.2 optimizando para {form.platforms.length} plataforma{form.platforms.length !== 1 ? 's' : ''}.</p>
             </div>
           )}
 
@@ -365,9 +471,29 @@ export default function Publish() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900">📋 Contenido Generado — Revisa y edita</h2>
-                <button onClick={handleGenerate} disabled={loading}
-                  className="text-sm text-blue-600 hover:text-blue-700">🔄 Regenerar</button>
+                <button onClick={handleGenerate} disabled={loading} className="text-sm text-blue-600 hover:text-blue-700">🔄 Regenerar</button>
               </div>
+
+              {/* Preview de imágenes seleccionadas */}
+              {form.imageUrls.length > 0 && (
+                <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+                    📸 Imágenes a publicar ({form.imageUrls.length})
+                  </p>
+                  <div className="flex gap-3 flex-wrap">
+                    {form.imageUrls.map((url, i) => (
+                      <div key={i} className="relative">
+                        <img src={url} alt={`img ${i+1}`}
+                          className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                          onError={(e) => { e.target.src = 'https://via.placeholder.com/80?text=?' }} />
+                        {i === 0 && (
+                          <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">★</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {form.platforms.map(platform => (
                 listing[platform] && (
@@ -375,20 +501,19 @@ export default function Publish() {
                 )
               ))}
 
-              {/* ─── Botón Publicar en Shopify ─────────────── */}
+              {/* Botón Publicar Shopify */}
               {form.platforms.includes('shopify') && listing?.shopify && (
                 <div className="bg-green-50 rounded-xl border border-green-200 p-5">
                   <h3 className="font-semibold text-green-800 mb-1">🛒 Publicar en Shopify</h3>
-                  <p className="text-sm text-green-700 mb-4">
-                    El producto se creará como <strong>borrador</strong> en tu tienda Shopify.
-                    Podrás revisarlo y activarlo desde el admin antes de que sea visible para los clientes.
+                  <p className="text-sm text-green-700 mb-3">
+                    El producto se creará como <strong>borrador</strong> con{' '}
+                    {form.imageUrls.length > 0
+                      ? <><strong>{form.imageUrls.length} imagen{form.imageUrls.length > 1 ? 'es' : ''}</strong> incluida{form.imageUrls.length > 1 ? 's' : ''}.</>
+                      : 'sin imágenes (puedes agregarlas después en el admin de Shopify).'}
                   </p>
 
-                  {/* Validación visual */}
                   {(!form.sku || !form.price) && (
-                    <p className="text-xs text-orange-600 mb-3">
-                      ⚠️ Necesitas llenar el SKU y Precio en el formulario para publicar.
-                    </p>
+                    <p className="text-xs text-orange-600 mb-3">⚠️ Necesitas SKU y Precio para publicar.</p>
                   )}
 
                   <button
@@ -405,7 +530,6 @@ export default function Publish() {
                   </button>
                 </div>
               )}
-
             </div>
           )}
         </div>
