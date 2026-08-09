@@ -14,7 +14,7 @@ import hmac
 import hashlib
 import requests
 from typing import List, Dict, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, unquote
 
 
 class ShopifyService:
@@ -53,16 +53,55 @@ class ShopifyService:
         except requests.exceptions.RequestException as e:
             return None, None, f"Error de conexión: {str(e)}"
 
-    def verify_hmac(self, query_params: dict) -> bool:
-        hmac_value = query_params.get('hmac', '')
-        params = {k: v for k, v in query_params.items() if k != 'hmac'}
-        sorted_params = '&'.join([f"{k}={v}" for k, v in sorted(params.items())])
+    def verify_hmac(self, query_string: str) -> bool:
+        """
+        Verifica que el callback venga realmente de Shopify.
+
+        Shopify firma la query string del callback con nuestro API secret.
+        Si la firma cuadra, el request es auténtico; si no, alguien está
+        golpeando nuestro callback a mano.
+
+        ¿POR QUÉ LA QUERY STRING CRUDA Y NO request.args?
+        --------------------------------------------------
+        Shopify firma los bytes exactos que envía, todavía percent-encoded.
+        Si decodificamos y re-codificamos (urlencode sobre request.args) un
+        valor como el `host` en base64 puede cambiar de forma (%3D → =) y la
+        firma deja de cuadrar aunque el request sea legítimo.
+
+        Args:
+            query_string: La query string tal cual llegó (request.query_string)
+
+        Returns:
+            True si la firma es válida
+        """
+        if not self.api_secret:
+            return False
+
+        received_hmac = ''
+        pairs = []
+
+        for pair in query_string.split('&'):
+            if not pair:
+                continue
+            key, _, value = pair.partition('=')
+            if key == 'hmac':
+                received_hmac = unquote(value)
+            elif key != 'signature':  # 'signature' es legacy y Shopify lo excluye
+                pairs.append((key, pair))
+
+        if not received_hmac:
+            return False
+
+        # Ordenar por clave (no por el pair completo) como especifica Shopify
+        message = '&'.join(pair for _, pair in sorted(pairs, key=lambda item: item[0]))
+
         calculated_hmac = hmac.new(
             self.api_secret.encode('utf-8'),
-            sorted_params.encode('utf-8'),
+            message.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
-        return hmac.compare_digest(calculated_hmac, hmac_value)
+
+        return hmac.compare_digest(calculated_hmac, received_hmac)
 
     # ═══════════════════════════════════════════════════════════
     # API: VERIFICAR CONEXIÓN

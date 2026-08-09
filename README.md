@@ -44,7 +44,7 @@ Shopify / Mercado Libre / Amazon
 | Fase 4 | Integración Shopify (OAuth + sync) | ✅ |
 | Fase 5 | Integración Mercado Libre (OAuth + refresh token) | ✅ |
 | Seguridad | Encriptación de tokens en BD (Fernet AES-128) | ✅ |
-| Testing | 23/23 tests pasando (pytest) | ✅ |
+| Testing | 40/40 tests pasando (pytest) | ✅ |
 | Logs | Logs de sincronización con stats | ✅ |
 | Migraciones | Flask-Migrate configurado | ✅ |
 | V1.5 IA | Publicación en Shopify con IA (Llama 3.2 local) | ✅ 🎉 |
@@ -104,7 +104,7 @@ Chat dentro de VendeFlow para consultas en lenguaje natural sobre inventario y v
 - **Auth:** JWT (flask-jwt-extended)
 - **Seguridad:** Fernet AES-128 (cryptography)
 - **IA:** Llama 3.2 via Ollama (local, gratis)
-- **Testing:** pytest + pytest-flask (23/23 ✅)
+- **Testing:** pytest + pytest-flask (40/40 ✅)
 
 ### Frontend
 - **Framework:** React + Vite
@@ -132,6 +132,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+flask db upgrade   # crea/actualiza el esquema de la BD
 python run.py
 ```
 
@@ -199,7 +200,9 @@ vendeflow/
 │   ├── tests/
 │   │   ├── conftest.py
 │   │   ├── test_auth.py                # 10 tests
-│   │   └── test_inventory.py           # 13 tests
+│   │   ├── test_inventory.py           # 13 tests
+│   │   ├── test_import.py              # 6 tests
+│   │   └── test_oauth_state.py         # 11 tests
 │   ├── migrations/
 │   └── scripts/
 ├── frontend/

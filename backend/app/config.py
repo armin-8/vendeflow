@@ -17,13 +17,9 @@ class Config:
     """Configuración base compartida por todos los entornos."""
     
     # Flask
+    # SECRET_KEY también firma el `state` de OAuth (ver utils/oauth_state.py)
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-cambiar')
-    
-    # Sessions (para OAuth)
-    SESSION_TYPE = 'filesystem'
-    SESSION_PERMANENT = False
-    PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)
-    
+
     # JWT
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'jwt-dev-secret-cambiar')
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)

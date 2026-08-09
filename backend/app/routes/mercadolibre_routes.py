@@ -16,7 +16,6 @@ FLUJO OAUTH:
 """
 
 import os
-import secrets
 from datetime import datetime
 from flask import Blueprint, jsonify, request, redirect
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -26,6 +25,7 @@ from app.models.product import Product
 from app.models.platform_connection import PlatformConnection
 from app.services.mercadolibre_service import mercadolibre_service
 from app.utils.log_helper import log_sync
+from app.utils.oauth_state import generate_state, verify_state
 
 bp = Blueprint('mercadolibre', __name__, url_prefix='/api/mercadolibre')
 
@@ -34,8 +34,8 @@ bp = Blueprint('mercadolibre', __name__, url_prefix='/api/mercadolibre')
 @jwt_required()
 def connect_mercadolibre():
     user_id = get_jwt_identity()
-    random_token = secrets.token_urlsafe(16)
-    state = f"{random_token}:{user_id}"
+    # State FIRMADO: transporta el user_id sin que nadie pueda alterarlo
+    state = generate_state('mercadolibre', {'user_id': int(user_id)})
     auth_url = mercadolibre_service.get_auth_url(state)
     return jsonify({'success': True, 'auth_url': auth_url}), 200
 
@@ -52,13 +52,13 @@ def mercadolibre_callback():
     if not code:
         return redirect(f"{frontend_url}/integrations?error=no_code")
 
-    try:
-        parts = state.split(':')
-        if len(parts) != 2:
-            raise ValueError("State inválido")
-        _, user_id = parts
-        user_id = int(user_id)
-    except Exception:
+    # ─── Verificar que el state lo emitimos nosotros ─────────
+    payload, state_error = verify_state('mercadolibre', state)
+    if state_error:
+        return redirect(f"{frontend_url}/integrations?error={state_error}")
+
+    user_id = payload.get('user_id')
+    if not user_id:
         return redirect(f"{frontend_url}/integrations?error=invalid_state")
 
     token_data, error_msg = mercadolibre_service.exchange_code_for_token(code)

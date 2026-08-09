@@ -14,7 +14,6 @@ ENDPOINTS:
 """
 
 import os
-import secrets
 from datetime import datetime
 from flask import Blueprint, jsonify, request, redirect
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -24,6 +23,7 @@ from app.models.product import Product
 from app.models.platform_connection import PlatformConnection
 from app.services.shopify_service import shopify_service
 from app.utils.log_helper import log_sync
+from app.utils.oauth_state import generate_state, verify_state
 
 bp = Blueprint('shopify', __name__, url_prefix='/api/shopify')
 
@@ -36,8 +36,8 @@ def connect_shopify():
     if not shop:
         return jsonify({'success': False, 'error': 'Se requiere el nombre de la tienda (shop)'}), 400
     shop = shop.replace('.myshopify.com', '').replace('https://', '').replace('http://', '')
-    random_token = secrets.token_urlsafe(16)
-    state = f"{random_token}:{user_id}:{shop}"
+    # State FIRMADO: transporta el user_id sin que nadie pueda alterarlo
+    state = generate_state('shopify', {'user_id': int(user_id), 'shop': shop})
     auth_url = shopify_service.get_auth_url(shop, state)
     return jsonify({'success': True, 'auth_url': auth_url, 'shop': shop}), 200
 
@@ -48,17 +48,29 @@ def shopify_callback():
     shop = request.args.get('shop', '').replace('.myshopify.com', '')
     state = request.args.get('state')
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
-    if not state:
+
+    # ─── 1. ¿El request viene de verdad de Shopify? ──────────
+    # Shopify firma la query string con nuestro API secret.
+    if not shopify_service.verify_hmac(request.query_string.decode('utf-8')):
+        return redirect(f"{frontend_url}/integrations?error=invalid_hmac")
+
+    # ─── 2. ¿El state lo emitimos nosotros y no expiró? ──────
+    payload, state_error = verify_state('shopify', state)
+    if state_error:
+        return redirect(f"{frontend_url}/integrations?error={state_error}")
+
+    user_id = payload.get('user_id')
+    saved_shop = payload.get('shop')
+    if not user_id or not saved_shop:
         return redirect(f"{frontend_url}/integrations?error=invalid_state")
-    try:
-        state_parts = state.split(':')
-        if len(state_parts) != 3:
-            raise ValueError("Invalid state format")
-        _, user_id, saved_shop = state_parts
-    except:
-        return redirect(f"{frontend_url}/integrations?error=invalid_state")
+
+    # ─── 3. ¿La tienda es la misma que inició el flujo? ──────
     if not shop or shop != saved_shop:
         return redirect(f"{frontend_url}/integrations?error=invalid_shop")
+
+    if not code:
+        return redirect(f"{frontend_url}/integrations?error=no_code")
+
     access_token, scope, error = shopify_service.exchange_code_for_token(shop, code)
     if error:
         return redirect(f"{frontend_url}/integrations?error=token_exchange_failed")

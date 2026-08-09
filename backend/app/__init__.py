@@ -62,10 +62,13 @@ def create_app(config_class=None):
     def health_check():
         return {'status': 'ok', 'message': 'VendeFlow API is running'}
 
-    # Importar modelos y crear tablas en desarrollo
+    # Importar los modelos para que SQLAlchemy y Flask-Migrate los conozcan.
+    #
+    # Ojo: aquí NO se crean tablas. El esquema lo maneja Flask-Migrate
+    # (`flask db upgrade`) — si el factory hiciera db.create_all() crearía las
+    # tablas por su cuenta y las migraciones quedarían fuera de sincronía.
     with app.app_context():
         from app.models import User, Product, PlatformConnection
         from app.models.sync_log import SyncLog
-        db.create_all()
 
     return app

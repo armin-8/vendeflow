@@ -137,7 +137,7 @@ function Import() {
     setError(null)
     
     try {
-      const result = await importService.confirm(updateExisting)
+      const result = await importService.confirm(previewData.products, updateExisting)
       setImportResult(result)
       setPreviewData(null) // Limpiar vista previa
     } catch (err) {

@@ -10,24 +10,7 @@
  */
 
 import { useState } from 'react'
-import { shopifyService } from '../services/api'
-
-const API_URL = import.meta.env.VITE_API_URL || '/api'
-
-const aiService = {
-  generateListing: async (data) => {
-    const authData = JSON.parse(localStorage.getItem('vendeflow-auth') || '{}')
-    const token = authData?.state?.token
-    const response = await fetch(`${API_URL}/ai/generate-listing`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(data)
-    })
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.error || 'Error al generar contenido')
-    return result
-  }
-}
+import { shopifyService, aiService } from '../services/api'
 
 // ─── Componente: Sección de Imágenes ─────────────────────
 function ImageSection({ imageUrls, onChange }) {

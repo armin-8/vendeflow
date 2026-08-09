@@ -76,12 +76,25 @@ export const mercadoLibreService = {
   syncBySku: async (sku) => request('/mercadolibre/sync', { method: 'POST', body: JSON.stringify({ sku }) })
 }
 
+export const aiService = {
+  getStatus: async () => request('/ai/status'),
+  generateListing: async (data) => request('/ai/generate-listing', { method: 'POST', body: JSON.stringify(data) }),
+  improveDescription: async (data) => request('/ai/improve-description', { method: 'POST', body: JSON.stringify(data) })
+}
+
 export const importService = {
   preview: async (file) => {
     const formData = new FormData()
     formData.append('file', file)
     return request('/import/preview', { method: 'POST', body: formData })
   },
-  confirm: async (updateExisting = false) => request('/import/confirm', { method: 'POST', body: JSON.stringify({ update_existing: updateExisting }) }),
+  /**
+   * Confirma la importación.
+   * Los productos van en el body: son los mismos que devolvió preview().
+   */
+  confirm: async (products, updateExisting = false) => request('/import/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ products, update_existing: updateExisting })
+  }),
   getTemplate: async () => request('/import/template')
 }

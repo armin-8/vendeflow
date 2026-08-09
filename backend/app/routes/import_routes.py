@@ -20,12 +20,13 @@ Separamos en "preview" y "confirm" para que el usuario pueda:
 """
 
 import io
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from pydantic import ValidationError
 
 from app import db
 from app.models.product import Product
+from app.schemas.product_schema import ProductCreate
 from app.services.import_service import read_import_file, get_template_columns
 
 # Crear Blueprint para agrupar estas rutas
@@ -137,17 +138,13 @@ def preview_import():
         product['action'] = 'update' if product['exists'] else 'create'
     
     # ─────────────────────────────────────────────────────────
-    # PASO 5: Guardar en sesión para el paso de confirmación
+    # PASO 5: Retornar respuesta
     # ─────────────────────────────────────────────────────────
-    
-    # Nota: En producción usaríamos Redis o similar
-    # Por ahora guardamos en la sesión de Flask
-    session['import_products'] = products
-    session['import_user_id'] = user_id
-    
-    # ─────────────────────────────────────────────────────────
-    # PASO 6: Retornar respuesta
-    # ─────────────────────────────────────────────────────────
+    #
+    # Los productos viajan de vuelta al cliente y regresan en el body de
+    # /confirm. NO los guardamos en servidor: la sesión de Flask es una
+    # cookie firmada de ~4KB (no le caben 150 productos) y encima no viaja
+    # en llamadas cross-origin, que es como el frontend habla con la API.
     
     # Contar nuevos vs actualizaciones
     new_count = sum(1 for p in products if p['action'] == 'create')
@@ -177,9 +174,10 @@ def confirm_import():
     REQUEST:
     --------
     {
+        "products": [...],             // Los productos que devolvió /preview
         "update_existing": true/false  // Si actualizar productos existentes
     }
-    
+
     RESPONSE:
     ---------
     {
@@ -190,48 +188,59 @@ def confirm_import():
         "errors": [...]     // Errores durante la creación
     }
     """
-    
+
     user_id = get_jwt_identity()
-    
+
     # ─────────────────────────────────────────────────────────
-    # PASO 1: Recuperar productos de la sesión
+    # PASO 1: Leer los productos del body
     # ─────────────────────────────────────────────────────────
-    
-    products = session.get('import_products')
-    stored_user_id = session.get('import_user_id')
-    
-    if not products:
+
+    data = request.get_json() or {}
+    raw_products = data.get('products')
+    update_existing = data.get('update_existing', False)
+
+    if not raw_products or not isinstance(raw_products, list):
         return jsonify({
             'success': False,
             'error': 'No hay datos para importar. Sube un archivo primero.'
         }), 400
-    
-    # Verificar que es el mismo usuario
-    if stored_user_id != user_id:
+
+    # ─────────────────────────────────────────────────────────
+    # PASO 2: Revalidar TODO lo que llega
+    # ─────────────────────────────────────────────────────────
+    #
+    # Los productos pasaron por /preview, pero vienen del cliente: hay que
+    # validarlos de nuevo aquí. Pydantic además normaliza (SKU a mayúsculas,
+    # espacios recortados) igual que en el CRUD normal de inventario.
+
+    products = []
+    errors = []
+
+    for index, item in enumerate(raw_products):
+        try:
+            products.append(ProductCreate(**item).model_dump())
+        except (ValidationError, TypeError) as e:
+            sku = item.get('sku', f'fila {index + 1}') if isinstance(item, dict) else f'fila {index + 1}'
+            errors.append(f'Producto inválido ({sku}): {str(e)}')
+
+    if not products:
         return jsonify({
             'success': False,
-            'error': 'Sesión inválida. Sube el archivo de nuevo.'
+            'error': 'Ningún producto pasó la validación',
+            'errors': errors
         }), 400
-    
-    # ─────────────────────────────────────────────────────────
-    # PASO 2: Obtener opciones del request
-    # ─────────────────────────────────────────────────────────
-    
-    data = request.get_json() or {}
-    update_existing = data.get('update_existing', False)
-    
+
     # ─────────────────────────────────────────────────────────
     # PASO 3: Procesar cada producto
     # ─────────────────────────────────────────────────────────
-    
+
     created = 0
     updated = 0
     skipped = 0
-    errors = []
-    
+
     for product_data in products:
         sku = product_data['sku']
-        
+
         try:
             # Buscar si ya existe
             existing = Product.query.filter_by(
@@ -291,14 +300,7 @@ def confirm_import():
         }), 500
     
     # ─────────────────────────────────────────────────────────
-    # PASO 5: Limpiar sesión
-    # ─────────────────────────────────────────────────────────
-    
-    session.pop('import_products', None)
-    session.pop('import_user_id', None)
-    
-    # ─────────────────────────────────────────────────────────
-    # PASO 6: Retornar resultados
+    # PASO 5: Retornar resultados
     # ─────────────────────────────────────────────────────────
     
     return jsonify({
