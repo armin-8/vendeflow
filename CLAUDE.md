@@ -17,6 +17,38 @@ Estado, roadmap y setup detallado viven en `README.md` — no los dupliques aqu�
 
 ---
 
+## Para quién construimos (esto decide los tradeoffs)
+
+El cliente es el **emprendedor que está arrancando y no tiene nada montado**: ni
+catálogo, ni ERP, ni proceso, ni conocimientos técnicos. No es el e-commerce manager
+de una empresa con 500 SKUs — ese era el ICP anterior y ya no aplica.
+
+Él pone las decisiones (qué vender, a qué precio, con qué estrategia). Nosotros
+ponemos la base de datos y toda la operación.
+
+**La promesa es "un clic hace muchas cosas."** Un producto capturado una vez debe
+salir publicado y sincronizado en todos los canales sin trabajo adicional.
+
+### Filtro para resolver disyuntivas
+
+Cuando haya que elegir entre dos caminos, gana el que:
+
+1. **Le quite trabajo operativo al usuario**, aunque nos cueste más código. Si una
+   decisión se puede inferir, se infiere; no se le pregunta.
+2. **No exija que entienda nada técnico.** Nada de OAuth, API keys, webhooks o SKUs
+   bien formados como requisito para avanzar. Si un concepto técnico tiene que
+   asomarse a la UI, es un bug de diseño.
+3. **Acerque a VendeFlow a ser su fuente de verdad.** Somos su sistema de registro
+   desde el primer producto; nada debe empujarlo a administrar catálogo en el admin
+   de Shopify o de ML.
+4. **Funcione con cero configuración previa.** El usuario llega sin catálogo: los
+   defaults tienen que ser buenos, no vacíos.
+
+Corolario: **valores por defecto sensatos > pantallas de configuración**, y
+**un flujo que hace todo > varios flujos que hacen cada cosa.**
+
+---
+
 ## Reglas de arquitectura
 
 El backend tiene 4 capas y el límite entre ellas **no es negociable**:

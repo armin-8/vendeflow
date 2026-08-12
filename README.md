@@ -1,21 +1,40 @@
 # 🚀 VendeFlow
 
-> **El hub de e-commerce más inteligente de LATAM**
-> Conecta cualquier ERP con cualquier plataforma de venta. La IA se encarga de la operación, tú tomas las decisiones clave.
+> **La plataforma de e-commerce para emprendedores que están empezando**
+> Tú decides qué vender y a qué precio. La operación la hace el software.
 
 ---
 
-## 🎯 Problema que resuelve
+## 🎯 Para quién es
 
-Los e-commerce managers en LATAM pierden horas sincronizando inventario manualmente entre sistemas y creando listings para cada plataforma. VendeFlow lo automatiza con IA.
+Para el emprendedor que está arrancando su e-commerce y **no tiene nada montado**:
+ni catálogo, ni ERP, ni proceso. Que quiere vender en Shopify y Mercado Libre pero
+se le van los días creando listings uno por uno, cuidando que el stock cuadre entre
+canales y peleando con el admin de cada plataforma.
+
+VendeFlow le da la base de datos de productos que no tiene y se encarga de la parte
+operativa, para que él solo se dedique a lo que sí mueve el negocio: **qué vender, a
+qué precio y con qué estrategia.**
 
 ```
-Odoo / SAP / Excel
-       ↓
-   VendeFlow (Hub inteligente con IA)
-       ↓
-Shopify / Mercado Libre / Amazon
+                Un producto, un clic
+                        ↓
+        VendeFlow (tu base de datos + IA)
+                        ↓
+        Shopify · Mercado Libre · Amazon
+             publicado en todos
 ```
+
+**La promesa:** un clic hace muchas cosas. Generar el contenido optimizado para cada
+canal, publicarlo en todos, y mantener el stock sincronizado sin que el usuario toque
+nada.
+
+### Por qué este cliente y no el otro
+
+Una empresa establecida ya tiene un Odoo o un SAP siendo su fuente de verdad, y
+entrar ahí significa pelear contra un sistema instalado. Un emprendedor que arranca
+no tiene ninguno: **VendeFlow es su fuente de verdad desde el primer producto que
+carga.** Entrada más fácil, permanencia más larga.
 
 ---
 
@@ -27,7 +46,7 @@ Shopify / Mercado Libre / Amazon
   → Llama 3.2 genera título, descripción HTML, tags, SEO (20 seg)
   → Producto creado en Shopify como borrador ✅
   → Ahorro: 48 minutos por producto
-  → Con 100 productos/mes → 80 horas ahorradas
+  → Un catálogo inicial de 30 productos: de 25 horas a 1 hora
 ```
 
 ---
@@ -48,23 +67,41 @@ Shopify / Mercado Libre / Amazon
 | Logs | Logs de sincronización con stats | ✅ |
 | Migraciones | Flask-Migrate configurado | ✅ |
 | V1.5 IA | Publicación en Shopify con IA (Llama 3.2 local) | ✅ 🎉 |
+| V1.5 IA | Publicación multicanal (ML + Amazon) | 🟡 Pendiente |
 
 ### 🎯 Pendiente
 
 | Feature | Descripción | Prioridad |
 |---------|-------------|-----------|
-| V1.5 IA ML | Publicar en Mercado Libre desde IA | 🔴 Alta |
+| V1.5 IA ML | Publicar en Mercado Libre desde IA — **completa la promesa del clic único** | 🔴 Alta |
+| Onboarding | Conectar tiendas sin fricción técnica (hoy ML pide ngrok) | 🔴 Alta |
 | Fase 6 | Integración Amazon | 🟡 Media |
 | V2 Analytics | Dashboard de ventas con IA | 🟡 Media |
-| Odoo | Integración como fuente de verdad | 🟡 Media |
 | V3 Chat | Asistente conversacional | 🟢 Baja |
+| Odoo | Integración como fuente de verdad | ⚪️ Descartado por ahora |
+
+> **Nota de prioridades.** Hoy el flujo publica en un solo canal: el usuario genera
+> con IA y manda a Shopify. Un clic que llega a un canal no es "un clic hace muchas
+> cosas" — por eso ML sube a lo más alto, no por orden de roadmap.
+>
+> Odoo baja porque servía al cliente anterior (empresa con ERP instalado). El
+> emprendedor que arranca no tiene ERP: la importación de Excel/CSV cubre el caso de
+> "ya tengo una lista en algún lado" y el resto lo crea desde cero con IA.
+>
+> El onboarding sube porque este cliente no es técnico. Si el primer contacto con el
+> producto es una pantalla pidiendo credenciales de API, lo perdemos antes de que vea
+> la magia. Para este ICP, **el onboarding es el producto.**
 
 ---
 
 ## 🤖 Roadmap de IA
 
-### Capa 1 — Publicación Multi-Canal (V1.5) ✅ ACTIVA
+### Capa 1 — Publicación Multi-Canal (V1.5) 🟡 A MEDIAS
 Usuario llena datos básicos → IA genera contenido optimizado → publica en todas las plataformas.
+
+⚠️ **Hoy solo llega a Shopify.** La IA ya genera el contenido para los tres canales,
+pero el botón de publicar únicamente manda a Shopify. Hasta que ML esté conectado,
+la promesa del clic único está incompleta.
 
 **Tecnología:** Llama 3.2 via Ollama (local, gratis, sin dependencias)
 
@@ -268,4 +305,4 @@ vendeflow/
 
 ---
 
-*Última actualización: 3 Julio 2026 — Primer producto publicado en Shopify con IA 🎉*
+*Última actualización: 9 Agosto 2026 — Reposicionamiento: el cliente es el emprendedor que arranca*
