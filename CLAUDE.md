@@ -144,11 +144,29 @@ Vive en `services/ai_service.py`. Decisiones que parecen arbitrarias pero no lo 
 
 - **Una llamada a Ollama por plataforma**, nunca todas juntas — el JSON se truncaba
   por límite de tokens.
-- **La descripción se recorta a 800 chars** (`MAX_DESCRIPTION_CHARS`) para que
-  Llama 3.2 alcance a cerrar el JSON.
+- **`format: "json"` en el request** — Ollama fuerza sintaxis JSON válida por
+  decodificación restringida. No lo quites: sin eso Llama 3.2 devuelve JSON
+  malformado cada tantas corridas y se pierde la generación de esa plataforma.
+- **`MAX_DESCRIPTION_CHARS = 4000`** limita la descripción de ENTRADA. Estuvo en 800
+  y era un recorte silencioso: si el usuario escribía varios párrafos, todo lo que
+  pasaba del carácter 800 se tiraba antes de llamar al modelo y la descripción
+  "se encogía" sin aviso. Llama 3.2 tiene 128k de contexto — ese nunca fue el límite.
+- **`num_ctx` y `num_predict` van explícitos** (`NUM_CTX`, `NUM_PREDICT` por
+  plataforma). El default de Ollama cambia entre versiones; sin fijarlos, un prompt
+  largo se recorta en silencio. Shopify necesita el triple que las otras porque
+  genera HTML y las etiquetas consumen tokens.
+- **Los prompts piden explícitamente descripciones largas.** Llama copia la *forma*
+  del ejemplo de JSON que le das: si el esqueleto trae dos viñetas, devuelve dos
+  viñetas por más material que le pases. Si acortas el ejemplo, acortas la salida.
 - `temperature: 0.3` — más determinista, JSON más parseable.
 - **El título de Shopify es sagrado**: se sobreescribe con el nombre exacto que
   escribió el usuario, sin importar lo que devuelva el modelo.
+
+**No propongas fine-tuning ni modelo propio.** Está evaluado y descartado por ahora
+(el razonamiento completo está en `README.md`): sin usuarios no hay datos de
+entrenamiento, y los pesos nunca fueron el diferenciador. Se reevalúa cuando haya
+volumen de uso. Lo que sí aplica hoy es **no tirar los datos**: las correcciones que
+el usuario hace sobre lo que generó la IA son el material de entrenamiento futuro.
 
 Límites duros por plataforma (van en los prompts y hay que respetarlos):
 

@@ -22,9 +22,26 @@ class AIService:
     OLLAMA_URL = "http://localhost:11434/api/generate"
     MODEL = "llama3.2:latest"
 
-    # Máximo de caracteres de descripción que Llama 3.2 puede procesar
-    # y aún así generar JSON válido completo
-    MAX_DESCRIPTION_CHARS = 800
+    # Máximo de caracteres de descripción que aceptamos como entrada.
+    #
+    # Antes eran 800 y era demasiado agresivo: si el usuario escribía varios
+    # párrafos, todo lo que pasaba del carácter 800 se tiraba ANTES de llamar al
+    # modelo, así que la descripción "se encogía" sin que nada lo avisara.
+    # Llama 3.2 tiene 128k de contexto — el cuello de botella nunca fue ese.
+    MAX_DESCRIPTION_CHARS = 4000
+
+    # Ventana de contexto explícita. Sin esto queda a merced del default de
+    # Ollama, que cambia entre versiones y podría recortar prompts largos en
+    # silencio.
+    NUM_CTX = 8192
+
+    # Tokens de salida por plataforma. Shopify necesita muchos más: genera HTML
+    # (las etiquetas consumen tokens) y es la descripción larga de verdad.
+    NUM_PREDICT = {
+        'shopify': 3000,
+        'mercadolibre': 1200,
+        'amazon': 1500,
+    }
 
     def generate_listing(self, name, description='', category='', brand='', price=0.0, platforms=None):
         if platforms is None:
@@ -61,11 +78,19 @@ Precio: ${price:.2f} MXN
 
 REGLAS ESTRICTAS:
 - El title DEBE ser EXACTAMENTE: "{name}"
-- Crea descripción HTML atractiva basada SOLO en la info proporcionada
-- No inventes características que no estén en la info
+- USA TODA la información de "Info". No resumas, no omitas datos, no acortes.
+  Cada dato que el usuario escribió debe aparecer en la descripción.
+- Desarrolla cada punto en oraciones completas y persuasivas. Una descripción
+  RICA Y LARGA vende más que una corta.
+- Genera TODAS las características que se desprendan de la info (no te limites
+  a dos) y al menos 4 beneficios para el comprador.
+- La intro debe ser de 2 a 3 párrafos, no una línea.
+- NO inventes características que no estén en la info. Organiza, desarrolla y
+  redacta lo que el usuario te dio — pero no agregues datos nuevos.
 
-Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones):
-{{"title":"{name}","description_html":"<h2>Descripción</h2><p>Intro atractiva del producto.</p><h2>Características</h2><ul><li><strong>Característica 1:</strong> detalle</li><li><strong>Característica 2:</strong> detalle</li></ul><h2>Beneficios</h2><ul><li>Beneficio para el comprador 1</li><li>Beneficio para el comprador 2</li></ul>","tags":["tag1","tag2","tag3","tag4","tag5"],"seo_title":"título SEO max 70 chars","seo_description":"meta description max 160 chars"}}""",
+Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones).
+El ejemplo muestra la ESTRUCTURA; tu contenido debe ser mucho más extenso:
+{{"title":"{name}","description_html":"<h2>Descripción</h2><p>Primer párrafo largo que presenta el producto y su propósito.</p><p>Segundo párrafo que profundiza en el uso y el contexto.</p><h2>Características</h2><ul><li><strong>Característica:</strong> explicación desarrollada en una o dos oraciones</li><li><strong>Otra característica:</strong> explicación desarrollada</li><li><strong>Y así con TODAS las que haya en la info</strong></li></ul><h2>Beneficios</h2><ul><li>Beneficio explicado desde lo que gana el comprador</li><li>Otro beneficio desarrollado</li><li>Tercer beneficio</li><li>Cuarto beneficio</li></ul><h2>Ideal para</h2><p>Párrafo sobre para quién es este producto.</p>","tags":["tag1","tag2","tag3","tag4","tag5"],"seo_title":"título SEO max 70 chars","seo_description":"meta description max 160 chars"}}""",
 
             'mercadolibre': f"""Eres experto en Mercado Libre México. Genera contenido optimizado en español.
 
@@ -109,9 +134,15 @@ Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones
                     "model": self.MODEL,
                     "prompt": prompt,
                     "stream": False,
+                    # Decodificación restringida a JSON: Ollama obliga al modelo a
+                    # emitir sintaxis JSON válida. Sin esto, Llama 3.2 de vez en
+                    # cuando devuelve JSON malformado y se perdía la generación
+                    # completa de esa plataforma.
+                    "format": "json",
                     "options": {
                         "temperature": 0.3,   # Más determinista → JSON más consistente
-                        "num_predict": 1500
+                        "num_ctx": self.NUM_CTX,
+                        "num_predict": self.NUM_PREDICT.get(platform, 1500)
                     }
                 },
                 timeout=180
@@ -182,9 +213,10 @@ Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones
 
         prompt = f"""Copywriter experto e-commerce LATAM. Mejora para {platform.upper()}.
 
-Info: {current_description[:500]}
+Info: {(current_description or '')[:self.MAX_DESCRIPTION_CHARS]}
 
-Escribe descripción {rules} en español de México. Solo la descripción, sin explicaciones."""
+Escribe descripción {rules} en español de México. Usa TODA la información: no
+resumas ni omitas datos. Solo la descripción, sin explicaciones."""
 
         try:
             response = requests.post(
@@ -193,7 +225,11 @@ Escribe descripción {rules} en español de México. Solo la descripción, sin e
                     "model": self.MODEL,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"temperature": 0.5, "num_predict": 1000}
+                    "options": {
+                        "temperature": 0.5,
+                        "num_ctx": self.NUM_CTX,
+                        "num_predict": 2000
+                    }
                 },
                 timeout=120
             )

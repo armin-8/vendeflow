@@ -8,7 +8,7 @@
 ## 🎯 Para quién es
 
 Para el emprendedor que está arrancando su e-commerce y **no tiene nada montado**:
-ni catálogo, ni ERP, ni proceso. Que quiere vender en Shopify y Mercado Libre pero
+ni catálogo, ni ERP, ni proceso. Que quiere vender en Shopify,Amazon. y Mercado Libre pero
 se le van los días creando listings uno por uno, cuidando que el stock cuadre entre
 canales y peleando con el admin de cada plataforma.
 
@@ -283,11 +283,33 @@ vendeflow/
 ## 📝 Decisiones Técnicas
 
 - **Ollama en lugar de Anthropic API** → gratis, local, sin dependencias
+- **Llama 3.2 base, sin fine-tune todavía** → ver nota abajo
 - **Una llamada por plataforma** → evita JSON truncado por límite de tokens
 - **Tokens encriptados en BD** → seguridad en reposo
 - **Flask-Migrate** → nunca más borrar la BD para cambiar modelos
 - **Productos como borrador** → el usuario revisa antes de activar en Shopify
 - **Refresh token automático en ML** → tokens duran 6h, se renuevan sin que el usuario note
+
+### ¿Por qué no entrenamos nuestro propio modelo todavía?
+
+Entrenar desde cero cuesta millones y daría un modelo **peor** que Llama 3.2 gratis.
+La opción real es hacerle fine-tuning (LoRA) a un modelo abierto — corre en una
+MacBook M2 Pro con `mlx-lm`, sale casi gratis y arreglaría de raíz los parches que
+hoy tenemos: tener que generar una llamada por plataforma, y que el modelo necesite
+instrucciones explícitas para no acortar las descripciones.
+
+**Pero un fine-tune necesita datos que todavía no existen.** Los ejemplos buenos son
+"así lo generó la IA / así lo corrigió el humano", y eso solo aparece con usuarios
+reales usando el producto.
+
+Además, el foso nunca fueron los pesos del modelo — esos cualquiera se los baja. El
+foso es el dataset propio: qué títulos se editaron, qué publicaciones vendieron, qué
+categoría de ML corresponde a qué producto en México.
+
+**Decisión:** seguimos con Llama 3.2 base. Cuando haya volumen de uso, se reevalúa.
+Mientras tanto, la prioridad es **empezar a guardar esos datos desde ya** — hoy las
+correcciones del usuario en `Publish.jsx` se tiran a la basura, y son justamente el
+material de entrenamiento del futuro.
 
 ## 🐛 Problemas Resueltos
 
