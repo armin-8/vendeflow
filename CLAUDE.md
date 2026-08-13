@@ -161,6 +161,17 @@ Vive en `services/ai_service.py`. Decisiones que parecen arbitrarias pero no lo 
 - **Los prompts piden explícitamente descripciones largas.** Llama copia la *forma*
   del ejemplo de JSON que le das: si el esqueleto trae dos viñetas, devuelve dos
   viñetas por más material que le pases. Si acortas el ejemplo, acortas la salida.
+- **Nunca metas una comilla doble en un ejemplo del prompt.** El modelo la copia y
+  ahí mismo cierra la cadena JSON: un ejemplo con `1"` (pulgadas) hacía que el
+  campo se cortara en el `1`. Para medidas se escribe "1 pulgada".
+- **Los ejemplos del prompt se copian textual.** Usa siempre un producto distinto
+  al del caso real en los ejemplos, o el modelo devuelve el contenido del ejemplo.
+- **Formato del `seo_title`**: `Nombre | Descriptor con keyword + Gancho`, máx 70
+  chars. El gancho (accesorio incluido, garantía, envío) **solo si la descripción
+  del usuario lo respalda** — `_ajustar_seo_title()` valida palabra por palabra
+  contra la descripción y borra el gancho si el modelo lo inventó. Ese método
+  también recorta sin partir frases. Es determinista y está cubierto por
+  `tests/test_ai_seo_title.py`; no dependas del prompt para esto.
 - `temperature: 0.3` — más determinista, JSON más parseable.
 - **El título de Shopify es sagrado**: se sobreescribe con el nombre exacto que
   escribió el usuario, sin importar lo que devuelva el modelo.
