@@ -43,6 +43,55 @@ class AIService:
         'amazon': 1500,
     }
 
+    # ═══════════════════════════════════════════════════════════
+    # ESQUEMAS DE SALIDA (structured outputs de Ollama)
+    # ═══════════════════════════════════════════════════════════
+    #
+    # ¿POR QUÉ UN ESQUEMA Y NO SOLO format:"json"?
+    # ---------------------------------------------
+    # format:"json" garantiza que la salida sea JSON *sintácticamente* válido,
+    # pero NO que traiga todos los campos. Al pedir descripciones largas, el
+    # modelo se gastaba en `description_html` y cerraba el objeto antes de
+    # escribir `seo_title`, `seo_description` y `tags` — JSON perfectamente
+    # válido, pero incompleto.
+    #
+    # Pasando el esquema, Ollama restringe la decodificación campo por campo y
+    # los `required` dejan de ser opcionales. No los quites.
+
+    SCHEMAS = {
+        'shopify': {
+            'type': 'object',
+            'properties': {
+                'title': {'type': 'string'},
+                'description_html': {'type': 'string'},
+                'tags': {'type': 'array', 'items': {'type': 'string'}},
+                'seo_title': {'type': 'string'},
+                'seo_description': {'type': 'string'},
+            },
+            'required': ['title', 'description_html', 'tags', 'seo_title', 'seo_description'],
+        },
+        'mercadolibre': {
+            'type': 'object',
+            'properties': {
+                'title': {'type': 'string'},
+                'description': {'type': 'string'},
+                'category_hint': {'type': 'string'},
+                'keywords': {'type': 'array', 'items': {'type': 'string'}},
+            },
+            'required': ['title', 'description', 'category_hint', 'keywords'],
+        },
+        'amazon': {
+            'type': 'object',
+            'properties': {
+                'title': {'type': 'string'},
+                'bullet_points': {'type': 'array', 'items': {'type': 'string'}},
+                'description': {'type': 'string'},
+                'backend_keywords': {'type': 'string'},
+            },
+            'required': ['title', 'bullet_points', 'description', 'backend_keywords'],
+        },
+    }
+
     def generate_listing(self, name, description='', category='', brand='', price=0.0, platforms=None):
         if platforms is None:
             platforms = ['shopify', 'mercadolibre', 'amazon']
@@ -134,11 +183,9 @@ Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones
                     "model": self.MODEL,
                     "prompt": prompt,
                     "stream": False,
-                    # Decodificación restringida a JSON: Ollama obliga al modelo a
-                    # emitir sintaxis JSON válida. Sin esto, Llama 3.2 de vez en
-                    # cuando devuelve JSON malformado y se perdía la generación
-                    # completa de esa plataforma.
-                    "format": "json",
+                    # Decodificación restringida por esquema: garantiza JSON válido
+                    # Y que vengan todos los campos requeridos (ver SCHEMAS).
+                    "format": self.SCHEMAS.get(platform, 'json'),
                     "options": {
                         "temperature": 0.3,   # Más determinista → JSON más consistente
                         "num_ctx": self.NUM_CTX,
@@ -185,6 +232,24 @@ Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones
             data = json.loads(json_text)
         except json.JSONDecodeError as e:
             raise ValueError(f"JSON inválido: {e}\nRespuesta: {json_text[:300]}")
+
+        # Red de seguridad: el esquema ya obliga a que vengan todos los campos,
+        # pero si alguno faltara devolvemos un vacío del tipo correcto en vez de
+        # una clave ausente que tronaría en el frontend.
+        esquema = self.SCHEMAS.get(platform)
+        if esquema:
+            for campo in esquema['required']:
+                if data.get(campo) is None:
+                    tipo = esquema['properties'][campo]['type']
+                    data[campo] = [] if tipo == 'array' else ''
+
+        # Shopify: recortar los campos SEO a lo que Google alcanza a mostrar.
+        # El prompt ya pide los límites, pero el modelo se pasa seguido.
+        if platform == 'shopify':
+            if len(data.get('seo_title', '')) > 70:
+                data['seo_title'] = data['seo_title'][:70].rsplit(' ', 1)[0]
+            if len(data.get('seo_description', '')) > 160:
+                data['seo_description'] = data['seo_description'][:160].rsplit(' ', 1)[0]
 
         # ML: título máx 60 chars
         if platform == 'mercadolibre' and 'title' in data:

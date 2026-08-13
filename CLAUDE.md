@@ -144,9 +144,12 @@ Vive en `services/ai_service.py`. Decisiones que parecen arbitrarias pero no lo 
 
 - **Una llamada a Ollama por plataforma**, nunca todas juntas — el JSON se truncaba
   por límite de tokens.
-- **`format: "json"` en el request** — Ollama fuerza sintaxis JSON válida por
-  decodificación restringida. No lo quites: sin eso Llama 3.2 devuelve JSON
-  malformado cada tantas corridas y se pierde la generación de esa plataforma.
+- **Se manda un ESQUEMA en `format`, no `"json"` a secas** (`SCHEMAS` por
+  plataforma). `format:"json"` solo garantiza sintaxis válida, no que vengan todos
+  los campos: con descripciones largas el modelo se gastaba en `description_html`
+  y cerraba el objeto sin `seo_title`, `seo_description` ni `tags` — JSON válido
+  pero incompleto. El esquema hace que los `required` no sean opcionales. Si
+  agregas un campo a un prompt, **agrégalo también al esquema** o llegará vacío.
 - **`MAX_DESCRIPTION_CHARS = 4000`** limita la descripción de ENTRADA. Estuvo en 800
   y era un recorte silencioso: si el usuario escribía varios párrafos, todo lo que
   pasaba del carácter 800 se tiraba antes de llamar al modelo y la descripción
