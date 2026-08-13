@@ -150,13 +150,21 @@ FORMATO OBLIGATORIO DEL seo_title:
   - Usa entre 60 y 70 caracteres. NUNCA lo dejes en 20 o 30 — desperdicias
     espacio que Google sí muestra.
 
+EL seo_description ES TEXTO DE VENTA, no una explicación:
+  - Le hablas al COMPRADOR sobre el producto. Menciona el producto, 2 beneficios
+    concretos y cierra invitando a comprar.
+  - NUNCA empieces con "Meta descripción", "Descripción SEO", "Descripción para
+    la página" ni nada que hable del campo mismo. Escribe la descripción, no
+    escribas SOBRE la descripción.
+  - Máximo 160 caracteres.
+
 NUNCA uses el carácter de comilla doble dentro de ningún valor de texto: rompe
 el JSON y el campo se corta ahí mismo. Para medidas en pulgadas escribe
 "1 pulgada" o "1 pulg", jamás el símbolo.
 
 Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones).
 El ejemplo muestra la ESTRUCTURA; tu contenido debe ser mucho más extenso:
-{{"title":"{name}","description_html":"<h2>Descripción</h2><p>Primer párrafo largo que presenta el producto y su propósito.</p><p>Segundo párrafo que profundiza en el uso y el contexto.</p><h2>Características</h2><ul><li><strong>Característica:</strong> explicación desarrollada en una o dos oraciones</li><li><strong>Otra característica:</strong> explicación desarrollada</li><li><strong>Y así con TODAS las que haya en la info</strong></li></ul><h2>Beneficios</h2><ul><li>Beneficio explicado desde lo que gana el comprador</li><li>Otro beneficio desarrollado</li><li>Tercer beneficio</li><li>Cuarto beneficio</li></ul><h2>Ideal para</h2><p>Párrafo sobre para quién es este producto.</p>","tags":["tag1","tag2","tag3","tag4","tag5"],"seo_title":"{name} | Descriptor con la palabra clave + Gancho si la info lo respalda","seo_description":"meta description max 160 chars"}}""",
+{{"title":"{name}","description_html":"<h2>Descripción</h2><p>Primer párrafo largo que presenta el producto y su propósito.</p><p>Segundo párrafo que profundiza en el uso y el contexto.</p><h2>Características</h2><ul><li><strong>Característica:</strong> explicación desarrollada en una o dos oraciones</li><li><strong>Otra característica:</strong> explicación desarrollada</li><li><strong>Y así con TODAS las que haya en la info</strong></li></ul><h2>Beneficios</h2><ul><li>Beneficio explicado desde lo que gana el comprador</li><li>Otro beneficio desarrollado</li><li>Tercer beneficio</li><li>Cuarto beneficio</li></ul><h2>Ideal para</h2><p>Párrafo sobre para quién es este producto.</p>","tags":["tag1","tag2","tag3","tag4","tag5"],"seo_title":"{name} | Descriptor con la palabra clave + Gancho si la info lo respalda","seo_description":"Descubre la Mochila Trekking 40L: impermeable, ligera y con funda de lluvia incluida. Ideal para senderismo. Envio a todo Mexico."}}""",
 
             'mercadolibre': f"""Eres experto en Mercado Libre México. Genera contenido optimizado en español.
 
@@ -224,6 +232,9 @@ Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones
                 result['seo_title'] = self._ajustar_seo_title(
                     result.get('seo_title', ''), description
                 )
+                result['seo_description'] = self._ajustar_seo_description(
+                    result.get('seo_description', ''), name, description
+                )
 
             return result
 
@@ -280,16 +291,64 @@ Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones
 
             titulo = recorte
 
-        # Quitar lo que quede colgando al final: conectores, separadores y
-        # números sueltos (un "1.5" huérfano era "1.5 litros" antes del corte).
-        palabras = titulo.split()
+        return self._podar_final(titulo)
+
+    # Arranques con los que el modelo habla DE la meta descripción en vez de
+    # escribirla ("Meta descripción para la página de producto de la GoPro...").
+    PREFIJOS_META = (
+        'meta descripcion', 'metadescripcion', 'meta description',
+        'descripcion meta', 'descripcion seo', 'seo description',
+        'descripcion para la pagina', 'descripcion de la pagina',
+        'esta es la descripcion', 'la descripcion de',
+        'descripcion del producto para',
+    )
+
+    def _ajustar_seo_description(self, texto: str, name: str,
+                                 descripcion: str, limite: int = 160) -> str:
+        """
+        Garantiza que la meta descripción sea texto de venta y quepa en Google.
+
+        Si el modelo se puso a describir el campo en vez de llenarlo, se descarta
+        y se arma una desde la descripción que escribió el usuario — su texto es
+        mejor que una explicación inútil.
+        """
+        texto = ' '.join((texto or '').split())
+
+        if not texto or self._normalizar(texto).startswith(self.PREFIJOS_META):
+            texto = self._meta_de_respaldo(name, descripcion)
+
+        return self._recortar(texto, limite)
+
+    def _meta_de_respaldo(self, name: str, descripcion: str) -> str:
+        """Arma una meta descripción con el material del usuario."""
+        limpia = ' '.join((descripcion or '').split())
+        if not limpia:
+            return f"{name}. Disponible ahora."
+        return f"{name}: {limpia}"
+
+    def _recortar(self, texto: str, limite: int) -> str:
+        """Recorta sin partir palabras ni frases."""
+        if len(texto) <= limite:
+            return texto
+        recorte = texto[:limite]
+        if ' ' in recorte:
+            recorte = recorte.rsplit(' ', 1)[0]
+        return self._podar_final(recorte).rstrip(' ,;:-') + '.'
+
+    def _podar_final(self, texto: str) -> str:
+        """
+        Quita del final lo que quede colgando tras un recorte: conectores
+        ("...sensor de 1 pulgada y"), números huérfanos ("...vidrio termico 1.5")
+        y separadores sueltos. Un texto cortado en conector se lee partido.
+        """
+        palabras = texto.split()
         while palabras:
-            ultima = palabras[-1].lower().strip('|+-,.')
-            if ultima in self.CONECTORES or ultima == '' or ultima.replace('.', '').replace(',', '').isdigit():
+            ultima = palabras[-1].lower().strip('|+-,.;:')
+            es_numero = ultima.replace('.', '').replace(',', '').isdigit()
+            if ultima in self.CONECTORES or ultima == '' or es_numero:
                 palabras.pop()
             else:
                 break
-
         return ' '.join(palabras).rstrip(' |+-,')
 
     @staticmethod
@@ -334,11 +393,8 @@ Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones
 
         # Shopify: recortar los campos SEO a lo que Google alcanza a mostrar.
         # El prompt ya pide los límites, pero el modelo se pasa seguido.
-        # (el seo_title se ajusta en _generate_for_platform, donde sí tenemos la
-        #  descripción original para validar el gancho)
-        if platform == 'shopify':
-            if len(data.get('seo_description', '')) > 160:
-                data['seo_description'] = data['seo_description'][:160].rsplit(' ', 1)[0]
+        # (seo_title y seo_description se ajustan en _generate_for_platform,
+        #  donde sí tenemos el nombre y la descripción original del usuario)
 
         # ML: título máx 60 chars
         if platform == 'mercadolibre' and 'title' in data:

@@ -117,3 +117,71 @@ def test_descripcion_vacia_quita_el_gancho():
 
 def test_normaliza_espacios_multiples():
     assert SERVICIO._ajustar_seo_title('Producto   X  |   Descriptor', SIN_EXTRAS) == 'Producto X | Descriptor'
+
+
+# ═══════════════════════════════════════════════════════════
+# META DESCRIPCIÓN
+# ═══════════════════════════════════════════════════════════
+#
+# El modelo a veces habla DE la meta descripción en vez de escribirla:
+#   "Meta descripción para la página de producto de la GoPro Hero Mission Pro..."
+# Eso es texto inútil que se publicaría tal cual en Shopify.
+
+NOMBRE = 'GoPro Hero Mission Pro'
+INFO = 'Camara de accion con sensor de 1 pulgada, video 5.3K y estabilizacion HyperSmooth.'
+
+
+def test_descarta_la_que_habla_de_si_misma():
+    mala = ('Meta descripción para la página de producto de la GoPro Hero Mission Pro, '
+            'cámara cinematográfica de alta calidad.')
+    resultado = SERVICIO._ajustar_seo_description(mala, NOMBRE, INFO)
+
+    assert not SERVICIO._normalizar(resultado).startswith('meta descripcion')
+    assert NOMBRE in resultado
+
+
+def test_descarta_otras_formas_meta():
+    for mala in ('Descripción SEO del producto para posicionamiento.',
+                 'Esta es la descripción de la página del producto.',
+                 'Metadescripcion optimizada para buscadores.'):
+        resultado = SERVICIO._ajustar_seo_description(mala, NOMBRE, INFO)
+        assert resultado != mala
+
+
+def test_respeta_una_meta_descripcion_buena():
+    buena = ('Descubre la GoPro Hero Mission Pro: sensor de 1 pulgada, video 5.3K '
+             'y estabilizacion. Envio a todo Mexico.')
+    assert SERVICIO._ajustar_seo_description(buena, NOMBRE, INFO) == buena
+
+
+def test_respeta_el_limite_de_160():
+    larga = 'Descubre la GoPro Hero Mission Pro. ' + ('Caracteristica destacada del producto. ' * 10)
+    resultado = SERVICIO._ajustar_seo_description(larga, NOMBRE, INFO)
+
+    assert len(resultado) <= 160
+    assert not resultado.endswith((' ', ',', ';', ':', '-'))
+
+
+def test_vacia_se_arma_con_la_info_del_usuario():
+    resultado = SERVICIO._ajustar_seo_description('', NOMBRE, INFO)
+
+    assert NOMBRE in resultado
+    assert len(resultado) > 0
+
+
+def test_sin_info_del_usuario_no_truena():
+    resultado = SERVICIO._ajustar_seo_description('', NOMBRE, '')
+
+    assert NOMBRE in resultado
+    assert len(resultado) <= 160
+
+
+def test_no_corta_la_meta_en_conector():
+    """'...sensor de 1 pulgada y.' se lee partido — el conector debe caer."""
+    larga = ('Descubre la GoPro Hero Mission Pro y como puede mejorar tu experiencia al '
+             'aire libre. Graba momentos memorables con su sensor de 1 pulgada y estabilizacion.')
+    resultado = SERVICIO._ajustar_seo_description(larga, NOMBRE, INFO)
+
+    penultima = resultado.rstrip('.').split()[-1].lower()
+    assert penultima not in AIService.CONECTORES
+    assert len(resultado) <= 160
