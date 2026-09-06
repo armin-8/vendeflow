@@ -12,7 +12,8 @@ FLUJO OAUTH:
 4. GET  /api/mercadolibre/products      → Obtener publicaciones de ML
 5. POST /api/mercadolibre/import        → Importar publicaciones a VendeFlow
 6. POST /api/mercadolibre/sync          → Sincronizar stock → ML
-7. DELETE /api/mercadolibre/disconnect  → Desconectar cuenta
+7. POST /api/mercadolibre/create-product → Publicar producto desde la IA
+8. DELETE /api/mercadolibre/disconnect  → Desconectar cuenta
 """
 
 import os
@@ -306,6 +307,110 @@ def sync_to_ml():
         'success': True, 'synced': synced, 'failed': failed,
         'errors': errors, 'message': f'Sincronización completada: {synced} actualizados, {failed} fallidos'
     }), 200
+
+
+@bp.route('/create-product', methods=['POST'])
+@jwt_required()
+def create_ml_product():
+    """
+    Publica en Mercado Libre el contenido que generó la IA.
+
+    ¿POR QUÉ QUEDA PAUSADA?
+    -----------------------
+    Igual que el borrador de Shopify: el usuario revisa antes de exponerse al
+    público. ML no tiene borradores, así que la publicación se crea y se pausa.
+
+    ¿POR QUÉ NO PEDIMOS CATEGORÍA?
+    -------------------------------
+    ML necesita un category_id de un árbol de miles de nodos. Se deduce del
+    título con predict_category(); el usuario nunca ve esa decisión.
+
+    BODY:
+    {
+        "title":       "Título max 60 chars",
+        "description": "Descripción en texto plano",
+        "sku":         "SKU-001",
+        "price":       899.00,
+        "quantity":    10,
+        "brand":       "Marca",
+        "name":        "Nombre canónico en VendeFlow (opcional)",
+        "image_urls":  ["https://..."]
+    }
+    """
+    user_id = get_jwt_identity()
+
+    connection = PlatformConnection.query.filter_by(
+        user_id=int(user_id), platform='mercadolibre', is_active=True
+    ).first()
+
+    if not connection:
+        return jsonify({'success': False, 'error': 'No hay cuenta de Mercado Libre conectada'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'Se requiere JSON en el request'}), 400
+    if not data.get('title'):
+        return jsonify({'success': False, 'error': 'El título es requerido'}), 400
+    if not data.get('sku'):
+        return jsonify({'success': False, 'error': 'El SKU es requerido'}), 400
+
+    access_token, token_error = mercadolibre_service.get_valid_token(connection)
+    if token_error:
+        return jsonify({'success': False, 'error': token_error}), 401
+
+    item, error = mercadolibre_service.create_product(access_token, data)
+
+    if error:
+        log_sync(int(user_id), 'mercadolibre', 'create_product', 'error', error_detail=error)
+        return jsonify({'success': False, 'error': error}), 400
+
+    # ─── Guardar también en VendeFlow ────────────────────────
+    # VendeFlow es la fuente de verdad: el producto tiene que existir aquí
+    # aunque haya nacido en el flujo de publicación.
+    sku = data['sku'].upper()
+    try:
+        existing = Product.query.filter_by(user_id=int(user_id), sku=sku, is_active=True).first()
+        if existing:
+            existing.mercadolibre_id = item.get('id')
+        else:
+            imagenes = data.get('image_urls') or []
+            db.session.add(Product(
+                user_id=int(user_id),
+                sku=sku,
+                name=data.get('name') or data['title'],
+                description=data.get('description', ''),
+                price=float(data.get('price', 0) or 0),
+                quantity=int(data.get('quantity', 0) or 0),
+                min_stock=5,
+                brand=data.get('brand') or None,
+                image_url=imagenes[0] if imagenes else None,
+                mercadolibre_id=item.get('id')
+            ))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ML] Error al guardar en VendeFlow: {e}")
+
+    log_sync(int(user_id), 'mercadolibre', 'create_product', 'success', items_ok=1)
+
+    # El status real, no el que asumimos: si la pausa falló hay que decirlo.
+    pausada = item.get('status') == 'paused'
+    mensaje = ('¡Publicación creada y pausada en Mercado Libre! Revísala y actívala cuando quieras.'
+               if pausada else
+               '¡Publicación creada en Mercado Libre! OJO: quedó ACTIVA, no pudimos pausarla.')
+
+    if not item.get('description_ok', True):
+        mensaje += ' La descripción no se pudo guardar: agrégala desde tu cuenta de ML.'
+
+    return jsonify({
+        'success': True,
+        'message': mensaje,
+        'item_id': item.get('id'),
+        'permalink': item.get('permalink'),
+        'status': item.get('status'),
+        'category_id': item.get('category_id'),
+        'category_name': item.get('category_name', '')
+    }), 201
 
 
 @bp.route('/disconnect', methods=['DELETE'])

@@ -119,6 +119,22 @@ arriba, `/api/ai/*` falla — no es un bug del código. Timeout de 180s.
 **Mercado Libre no acepta `localhost`** como redirect URI. En desarrollo hay que
 levantar ngrok y poner esa URL en `MERCADOLIBRE_REDIRECT_URI`.
 
+**Publicar en ML son tres llamadas, no una.** `POST /items` crea la publicación,
+`POST /items/{id}/description` le pone la descripción (es un recurso aparte y solo
+acepta texto plano — por eso el prompt de ML prohíbe HTML) y `PUT /items/{id}` la
+pausa. Si falla la descripción **no** se tira la publicación: ya existe, se reporta
+en `description_ok` y la UI avisa.
+
+**La categoría de ML no se le pregunta al usuario.** ML exige un `category_id` de un
+árbol de miles de nodos; `predict_category()` lo deduce del título con el mismo
+predictor que usa ML en su formulario. Por eso el título de ML importa el doble: es
+contenido Y es la entrada del predictor. Si el título sale con eslogan, la categoría
+sale mal.
+
+**Los errores de ML vienen en `cause`, no en `message`.** Sin desdoblar ese arreglo
+(`_mensaje_de_error()`) el usuario solo ve "Bad Request" y no se entera de que le
+faltó un atributo obligatorio de la categoría.
+
 ---
 
 ## Prohibiciones
@@ -127,9 +143,11 @@ levantar ngrok y poner esa URL en `MERCADOLIBRE_REDIRECT_URI`.
   Flask-Migrate; `create_all()` crea tablas por su cuenta y deja las migraciones
   fuera de sincronía. (Los tests sí lo usan, en `conftest.py`, contra una BD
   desechable — eso está bien.)
-- **Nunca publiques productos activos en Shopify.** Siempre `status: draft`, para
-  que el usuario revise en su admin antes de publicar. Es una decisión de
-  producto, no un detalle técnico.
+- **Nunca publiques productos activos.** En Shopify siempre `status: draft`; en
+  Mercado Libre, que no tiene borradores, se crea y se pausa acto seguido
+  (`create_product` lo hace y devuelve el status REAL — si la pausa falla, la ruta
+  lo dice en el mensaje en vez de asumir). Es una decisión de producto: el usuario
+  revisa antes de quedar expuesto al público.
 - **Nunca borres productos con `DELETE` real.** Es soft delete: `is_active = False`.
   Y toda query de lectura filtra `is_active == True`.
 - **Nunca dejes que la IA invente datos del producto.** Los prompts organizan y
@@ -175,6 +193,11 @@ Vive en `services/ai_service.py`. Decisiones que parecen arbitrarias pero no lo 
 - `temperature: 0.3` — más determinista, JSON más parseable.
 - **El título de Shopify es sagrado**: se sobreescribe con el nombre exacto que
   escribió el usuario, sin importar lo que devuelva el modelo.
+- **El título de ML es keyword, no eslogan**: `Producto + Marca + Modelo +
+  característica más buscada`. Nada de "Nombre: la aventura empieza aquí" — cada
+  palabra tiene que ser una que el comprador teclearía en el buscador. Y el ejemplo
+  del prompt usa otro producto (una mochila), porque cuando usaba una GoPro el modelo
+  copiaba el ejemplo y se comía palabras del nombre real.
 
 **No propongas fine-tuning ni modelo propio.** Está evaluado y descartado por ahora
 (el razonamiento completo está en `README.md`): sin usuarios no hay datos de
@@ -214,7 +237,7 @@ Límites duros por plataforma (van en los prompts y hay que respetarlos):
 cd backend && source venv/bin/activate
 flask db upgrade        # OBLIGATORIO antes del primer arranque y tras cambiar modelos
 flask db migrate -m "descripción"   # generar migración nueva
-python -m pytest tests/ -q          # 40 tests
+python -m pytest tests/ -q          # 83 tests
 
 # Ollama tiene que estar corriendo para /api/ai/*
 ollama list   # verificar; si no responde: ollama serve
@@ -229,6 +252,8 @@ validar. No es una regresión.
 ## Pendientes conocidos
 
 - `Product.amazon_id` existe en el modelo pero no hay integración con Amazon todavía.
-- Publicar en Mercado Libre desde la IA es lo siguiente del roadmap: los prompts de
-  ML ya están en `ai_service.py`, falta el endpoint `create-product` equivalente al
-  de Shopify.
+- **Publicar es un botón por canal, no uno solo.** Shopify y ML ya funcionan desde
+  la IA, pero el usuario tiene que apretar dos botones. "Un clic hace muchas cosas"
+  pide un único "Publicar en todos mis canales".
+- El `ai_generation_log` (guardar qué generó la IA y qué corrigió el usuario) no
+  existe todavía. Es el material de entrenamiento futuro y hoy se está tirando.

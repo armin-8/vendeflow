@@ -10,7 +10,7 @@
  */
 
 import { useState } from 'react'
-import { shopifyService, aiService } from '../services/api'
+import { shopifyService, mercadoLibreService, aiService } from '../services/api'
 
 // ─── Componente: Sección de Imágenes ─────────────────────
 function ImageSection({ imageUrls, onChange }) {
@@ -207,7 +207,7 @@ export default function Publish() {
   })
 
   const [loading, setLoading] = useState(false)
-  const [publishing, setPublishing] = useState(false)
+  const [publishing, setPublishing] = useState(null)   // 'shopify' | 'mercadolibre' | null
   const [listing, setListing] = useState(null)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
@@ -256,7 +256,7 @@ export default function Publish() {
     if (!form.sku.trim()) return setError('El SKU es requerido para publicar')
     if (!form.price) return setError('El precio es requerido para publicar')
 
-    setPublishing(true)
+    setPublishing('shopify')
     setError(null)
 
     try {
@@ -286,7 +286,43 @@ export default function Publish() {
     } catch (err) {
       setError(err.message)
     } finally {
-      setPublishing(false)
+      setPublishing(null)
+    }
+  }
+
+  const handlePublishML = async () => {
+    if (!form.sku.trim()) return setError('El SKU es requerido para publicar')
+    if (!form.price) return setError('El precio es requerido para publicar')
+    if (form.imageUrls.length === 0) return setError('Mercado Libre exige al menos una imagen')
+
+    setPublishing('mercadolibre')
+    setError(null)
+
+    try {
+      const mlData = listing?.mercadolibre || {}
+      const result = await mercadoLibreService.createProduct({
+        title: mlData.title || form.name,
+        description: mlData.description || '',
+        // El nombre canónico en VendeFlow es el que escribió el usuario,
+        // no el título recortado a 60 chars que pide ML.
+        name: form.name,
+        sku: form.sku.toUpperCase(),
+        price: parseFloat(form.price) || 0,
+        quantity: parseInt(form.quantity) || 1,
+        brand: form.brand || '',
+        image_urls: form.imageUrls
+      })
+
+      setMessage({
+        type: 'success',
+        text: `✅ ${result.message}`,
+        link: result.permalink,
+        linkLabel: 'Ver en Mercado Libre →'
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPublishing(null)
     }
   }
 
@@ -305,7 +341,7 @@ export default function Publish() {
           {message.text}
           {message.link && (
             <a href={message.link} target="_blank" rel="noreferrer" className="ml-2 underline font-medium">
-              Ver en Shopify →
+              {message.linkLabel || 'Ver en Shopify →'}
             </a>
           )}
           <button onClick={() => setMessage(null)} className="float-right font-bold">×</button>
@@ -501,15 +537,45 @@ export default function Publish() {
 
                   <button
                     onClick={handlePublishShopify}
-                    disabled={publishing || !form.sku || !form.price}
+                    disabled={!!publishing || !form.sku || !form.price}
                     className="w-full py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {publishing ? (
+                    {publishing === 'shopify' ? (
                       <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                       </svg>Publicando en Shopify...</>
                     ) : <>🚀 Publicar en Shopify como Borrador</>}
+                  </button>
+                </div>
+              )}
+
+              {/* Botón Publicar Mercado Libre */}
+              {form.platforms.includes('mercadolibre') && listing?.mercadolibre && (
+                <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-5">
+                  <h3 className="font-semibold text-yellow-800 mb-1">🤝 Publicar en Mercado Libre</h3>
+                  <p className="text-sm text-yellow-700 mb-3">
+                    La publicación se creará <strong>pausada</strong> para que la revises antes de
+                    que sea visible. La categoría la elegimos nosotros a partir del título.
+                  </p>
+
+                  {(!form.sku || !form.price || form.imageUrls.length === 0) && (
+                    <p className="text-xs text-orange-600 mb-3">
+                      ⚠️ Necesitas SKU, Precio y al menos una imagen — Mercado Libre no publica sin foto.
+                    </p>
+                  )}
+
+                  <button
+                    onClick={handlePublishML}
+                    disabled={!!publishing || !form.sku || !form.price || form.imageUrls.length === 0}
+                    className="w-full py-3 bg-yellow-500 text-white rounded-lg font-medium hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {publishing === 'mercadolibre' ? (
+                      <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>Publicando en Mercado Libre...</>
+                    ) : <>🚀 Publicar en Mercado Libre como Pausada</>}
                   </button>
                 </div>
               )}

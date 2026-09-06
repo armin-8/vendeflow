@@ -25,7 +25,10 @@ ENDPOINTS DE ML QUE USAMOS:
 - GET  /users/me                          → Info del usuario (para obtener su ID)
 - GET  /users/{user_id}/items/search      → Listar publicaciones
 - GET  /items/{item_id}                   → Detalle de una publicación
-- PUT  /items/{item_id}                   → Actualizar stock de una publicación
+- PUT  /items/{item_id}                   → Actualizar stock / pausar una publicación
+- POST /items                             → Crear una publicación nueva
+- POST /items/{item_id}/description       → Ponerle descripción a la publicación
+- GET  /sites/MLM/domain_discovery/search → Adivinar la categoría a partir del título
 """
 
 import os
@@ -48,6 +51,25 @@ class MercadoLibreService:
 
     # URL para intercambiar/refrescar tokens
     TOKEN_URL = 'https://api.mercadolibre.com/oauth/token'
+
+    # Sitio de Mercado Libre México. Todo lo de categorías y publicaciones va
+    # por sitio: una categoría de MLM no existe en MLA (Argentina).
+    SITE_ID = 'MLM'
+
+    # ─── Defaults de publicación ─────────────────────────────
+    # El usuario que atendemos no sabe (ni tiene por qué saber) qué es un
+    # listing_type ni un buying_mode. Estos valores cubren el caso normal:
+    #   gold_special = "Clásica", la publicación estándar de MLM
+    #   buy_it_now   = compra directa (no subasta)
+    #   new          = producto nuevo
+    # Se pueden sobreescribir desde product_data si algún día hace falta.
+    DEFAULT_LISTING_TYPE = 'gold_special'
+    DEFAULT_CONDITION = 'new'
+    DEFAULT_CURRENCY = 'MXN'
+
+    # ML corta los títulos a 60 caracteres. Lo aplicamos nosotros para no
+    # depender de que el texto llegue ya recortado desde la IA o de la UI.
+    MAX_TITLE_CHARS = 60
 
     def __init__(self):
         """
@@ -415,6 +437,268 @@ class MercadoLibreService:
             normalized.append(normalized_product)
 
         return normalized
+
+    # ═══════════════════════════════════════════════════════════
+    # API: DEDUCIR LA CATEGORÍA
+    # ═══════════════════════════════════════════════════════════
+
+    def predict_category(self, access_token: str, query: str) -> Tuple[Optional[Dict], Optional[str]]:
+        """
+        Deduce la categoría de ML a partir del título del producto.
+
+        ML exige un `category_id` para publicar y el árbol de MLM tiene miles
+        de nodos. Preguntárselo al usuario sería mandarlo a navegar ese árbol;
+        en vez de eso usamos el mismo predictor que ML usa en su propio
+        formulario de publicación.
+
+        Args:
+            access_token: Token válido
+            query:        Título del producto (entre más descriptivo, mejor)
+
+        Returns:
+            (categoria, error) — categoria trae category_id, category_name y domain_id
+        """
+        if not query or not query.strip():
+            return None, 'Se necesita el título del producto para deducir la categoría'
+
+        url = f"{self.BASE_URL}/sites/{self.SITE_ID}/domain_discovery/search"
+
+        try:
+            response = requests.get(
+                url,
+                headers={'Authorization': f'Bearer {access_token}'},
+                params={'q': query.strip(), 'limit': 1},
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                return None, self._mensaje_de_error(response)
+
+            resultados = response.json() or []
+            if not resultados:
+                return None, ('No pudimos deducir la categoría con ese título. '
+                              'Hazlo más descriptivo (ej: "Camara de accion 5.3K" '
+                              'en vez de solo la marca).')
+
+            mejor = resultados[0]
+            if not mejor.get('category_id'):
+                return None, 'Mercado Libre no devolvió una categoría para ese título'
+
+            return {
+                'category_id': mejor.get('category_id'),
+                'category_name': mejor.get('category_name', ''),
+                'domain_id': mejor.get('domain_id', ''),
+            }, None
+
+        except requests.exceptions.RequestException as e:
+            return None, f"Error de conexión: {str(e)}"
+
+    # ═══════════════════════════════════════════════════════════
+    # API: CREAR PUBLICACIÓN
+    # ═══════════════════════════════════════════════════════════
+
+    def create_product(self, access_token: str, product_data: dict) -> Tuple[Optional[Dict], Optional[str]]:
+        """
+        Publica un producto en Mercado Libre con el contenido de la IA.
+
+        CAMPOS SOPORTADOS
+        -----------------
+        title        → máx 60 chars (se recorta aquí, sin partir palabras)
+        description  → texto plano SIN HTML (va en una llamada aparte)
+        category_id  → opcional; si no viene se deduce con predict_category()
+        price        → MXN
+        quantity     → stock inicial
+        sku          → se guarda como atributo SELLER_SKU, que es justo lo que
+                       lee normalize_items() cuando reimportamos desde ML
+        brand, model → atributos; ML los pide en casi todas las categorías
+        image_urls   → lista de URLs, ML las descarga (la primera es la portada)
+
+        ¿POR QUÉ QUEDA PAUSADA?
+        -----------------------
+        Mismo criterio que el `draft` de Shopify: el usuario revisa antes de
+        quedar expuesto al público. ML no tiene borradores, así que creamos y
+        pausamos enseguida — son dos llamadas porque es el flujo que la API
+        soporta. Si la pausa fallara, devolvemos el status REAL en el
+        resultado; no damos por hecho que quedó pausada.
+
+        Returns:
+            (item, error) — item es el JSON de ML más `description_ok`
+        """
+        # ─── 1. Validar lo mínimo indispensable ──────────────
+        title = self._recortar_titulo(product_data.get('title', ''))
+        if not title:
+            return None, 'El título es requerido para publicar en Mercado Libre'
+
+        try:
+            price = float(product_data.get('price', 0) or 0)
+        except (TypeError, ValueError):
+            price = 0
+        if price <= 0:
+            return None, 'El precio debe ser mayor a cero'
+
+        imagenes = [url for url in (product_data.get('image_urls') or []) if url]
+        if not imagenes:
+            return None, ('Mercado Libre exige al menos una imagen para publicar. '
+                          'Agrega la URL de una foto del producto.')
+
+        # ─── 2. Categoría: la que venga, o la que deduzcamos ──
+        category_id = product_data.get('category_id')
+        categoria_deducida = None
+        if not category_id:
+            categoria_deducida, error = self.predict_category(access_token, title)
+            if error:
+                return None, error
+            category_id = categoria_deducida['category_id']
+
+        # ─── 3. Armar el payload ─────────────────────────────
+        payload = {
+            'title': title,
+            'category_id': category_id,
+            'price': price,
+            'currency_id': product_data.get('currency_id', self.DEFAULT_CURRENCY),
+            'available_quantity': max(1, int(product_data.get('quantity', 1) or 1)),
+            'buying_mode': 'buy_it_now',
+            'condition': product_data.get('condition', self.DEFAULT_CONDITION),
+            'listing_type_id': product_data.get('listing_type_id', self.DEFAULT_LISTING_TYPE),
+            'pictures': [{'source': url} for url in imagenes],
+            'attributes': self._armar_atributos(product_data),
+        }
+
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        }
+
+        try:
+            response = requests.post(
+                f"{self.BASE_URL}/items", headers=headers, json=payload, timeout=30
+            )
+        except requests.exceptions.RequestException as e:
+            return None, f"Error de conexión: {str(e)}"
+
+        if response.status_code not in (200, 201):
+            return None, self._mensaje_de_error(response)
+
+        item = response.json()
+        item_id = item.get('id')
+
+        # ─── 4. La descripción va aparte ─────────────────────
+        # Ya existe la publicación: si esto falla no tiramos todo el trabajo,
+        # solo lo reportamos para que la UI lo diga.
+        item['description_ok'] = True
+        descripcion = (product_data.get('description') or '').strip()
+        if descripcion and item_id:
+            ok, _ = self.add_description(access_token, item_id, descripcion)
+            item['description_ok'] = ok
+
+        # ─── 5. Pausarla para que el usuario la revise ───────
+        if item_id and item.get('status') != 'paused':
+            pausada, _ = self.pause_item(access_token, item_id)
+            if pausada:
+                item['status'] = 'paused'
+
+        if categoria_deducida:
+            item['category_name'] = categoria_deducida.get('category_name', '')
+
+        return item, None
+
+    def add_description(self, access_token: str, item_id: str, texto: str) -> Tuple[bool, str]:
+        """
+        Le pone la descripción a una publicación.
+
+        En ML la descripción NO va en el POST /items: es un recurso aparte y
+        solo acepta texto plano (por eso el prompt de ML prohíbe HTML).
+        """
+        try:
+            response = requests.post(
+                f"{self.BASE_URL}/items/{item_id}/description",
+                headers={'Authorization': f'Bearer {access_token}',
+                         'Content-Type': 'application/json'},
+                json={'plain_text': texto},
+                timeout=15
+            )
+            if response.status_code in (200, 201):
+                return True, 'Descripción publicada'
+            return False, self._mensaje_de_error(response)
+        except requests.exceptions.RequestException as e:
+            return False, f"Error de conexión: {str(e)}"
+
+    def pause_item(self, access_token: str, item_id: str) -> Tuple[bool, str]:
+        """Pausa una publicación: deja de estar visible sin borrarla."""
+        try:
+            response = requests.put(
+                f"{self.BASE_URL}/items/{item_id}",
+                headers={'Authorization': f'Bearer {access_token}',
+                         'Content-Type': 'application/json'},
+                json={'status': 'paused'},
+                timeout=15
+            )
+            if response.status_code == 200:
+                return True, 'Publicación pausada'
+            return False, self._mensaje_de_error(response)
+        except requests.exceptions.RequestException as e:
+            return False, f"Error de conexión: {str(e)}"
+
+    # ─── Auxiliares de publicación ───────────────────────────
+
+    @classmethod
+    def _recortar_titulo(cls, titulo: str) -> str:
+        """60 caracteres, sin partir la última palabra a la mitad."""
+        titulo = ' '.join((titulo or '').split())
+        if len(titulo) <= cls.MAX_TITLE_CHARS:
+            return titulo
+        cortado = titulo[:cls.MAX_TITLE_CHARS]
+        if ' ' in cortado:
+            cortado = cortado.rsplit(' ', 1)[0]
+        return cortado.rstrip(' ,-|')
+
+    def _armar_atributos(self, product_data: dict) -> List[Dict]:
+        """
+        Atributos de la publicación.
+
+        BRAND va siempre: ML lo pide como obligatorio en casi todas las
+        categorías de producto físico y rechazar la publicación por eso sería
+        mandarle al usuario un error que no sabe resolver. Sin marca capturada,
+        "Genérico" es el valor que ML mismo sugiere.
+
+        SELLER_SKU cierra el círculo con normalize_items(): es de donde
+        sacamos el SKU cuando reimportamos la publicación desde ML.
+        """
+        atributos = [
+            {'id': 'BRAND', 'value_name': (product_data.get('brand') or '').strip() or 'Genérico'},
+        ]
+
+        modelo = (product_data.get('model') or '').strip()
+        if modelo:
+            atributos.append({'id': 'MODEL', 'value_name': modelo})
+
+        sku = (product_data.get('sku') or '').strip()
+        if sku:
+            atributos.append({'id': 'SELLER_SKU', 'value_name': sku.upper()})
+
+        return atributos
+
+    @staticmethod
+    def _mensaje_de_error(response) -> str:
+        """
+        ML manda el detalle útil en `cause`, no en `message`.
+
+        Sin desdoblar `cause` el usuario ve "Bad Request" y no se entera de que
+        le faltó, por ejemplo, el atributo obligatorio de la categoría.
+        """
+        try:
+            data = response.json()
+        except ValueError:
+            return f"Error {response.status_code}: {response.text[:200]}"
+
+        detalles = []
+        for causa in (data.get('cause') or []):
+            texto = causa.get('message') if isinstance(causa, dict) else str(causa)
+            if texto:
+                detalles.append(texto)
+
+        detalle = ' | '.join(detalles) or data.get('message') or response.text[:200]
+        return f"Error {response.status_code}: {detalle}"
 
     # ═══════════════════════════════════════════════════════════
     # API: ACTUALIZAR STOCK EN ML

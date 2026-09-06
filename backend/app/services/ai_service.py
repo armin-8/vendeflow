@@ -176,10 +176,21 @@ Precio: ${price:.2f} MXN
 
 REGLAS ESTRICTAS:
 - El title DEBE tener MÁXIMO 60 CARACTERES exactos incluyendo espacios
+- El title se escribe como lo pide Mercado Libre:
+      Producto + Marca + Modelo + la característica más buscada
+  NADA de eslóganes ni frases publicitarias. Nada de dos puntos ni guiones
+  para meter una frase bonita. Cada palabra debe ser una que el comprador
+  escribiría en el buscador.
+  MAL:  Mochila Trekking: la aventura empieza aqui
+  BIEN: Mochila Trekking 40L Impermeable Senderismo
 - La description debe ser texto plano SIN HTML
+- La description usa TODA la info: características, lo que incluye, garantía
+  y envío. Desarrolla en varias oraciones, no la resumas a dos líneas.
+- NO inventes datos que no estén en la info.
 
-Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones):
-{{"title":"título max 60 chars","description":"descripción texto plano 100-200 palabras sin HTML","category_hint":"Categoría sugerida","keywords":["kw1","kw2","kw3","kw4","kw5"]}}""",
+Responde SOLO con este JSON válido (sin texto extra, sin ```, sin explicaciones).
+El ejemplo es de OTRO producto: copia la estructura, nunca su contenido.
+{{"title":"Mochila Trekking 40L Impermeable Senderismo Funda Lluvia","description":"Mochila de trekking de 40 litros fabricada en poliester impermeable, pensada para rutas de varios dias. Su sistema de ventilacion en la espalda reduce el sudor y el cinturon lumbar reparte el peso para que puedas caminar horas sin cansarte. Incluye funda de lluvia y bolsillos laterales para botellas. Envio a todo Mexico.","category_hint":"Deportes y Fitness","keywords":["mochila trekking","mochila impermeable","senderismo","40 litros","funda de lluvia"]}}""",
 
             'amazon': f"""Eres experto en Amazon México. Genera contenido para el algoritmo A9/A10 en español.
 

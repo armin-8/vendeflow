@@ -73,7 +73,15 @@ export const mercadoLibreService = {
   getProducts: async () => request('/mercadolibre/products'),
   importProducts: async (updateExisting = true) => request('/mercadolibre/import', { method: 'POST', body: JSON.stringify({ update_existing: updateExisting }) }),
   syncInventory: async () => request('/mercadolibre/sync', { method: 'POST' }),
-  syncBySku: async (sku) => request('/mercadolibre/sync', { method: 'POST', body: JSON.stringify({ sku }) })
+  syncBySku: async (sku) => request('/mercadolibre/sync', { method: 'POST', body: JSON.stringify({ sku }) }),
+
+  /**
+   * Publicar en Mercado Libre desde el contenido generado por la IA.
+   * La publicación queda PAUSADA (ML no tiene borradores) para que el
+   * usuario la revise antes de que sea visible al público.
+   * La categoría se deduce sola del título: no se pide.
+   */
+  createProduct: async (productData) => request('/mercadolibre/create-product', { method: 'POST', body: JSON.stringify(productData) })
 }
 
 export const aiService = {

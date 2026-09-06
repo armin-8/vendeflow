@@ -63,26 +63,30 @@ carga.** Entrada más fácil, permanencia más larga.
 | Fase 4 | Integración Shopify (OAuth + sync) | ✅ |
 | Fase 5 | Integración Mercado Libre (OAuth + refresh token) | ✅ |
 | Seguridad | Encriptación de tokens en BD (Fernet AES-128) | ✅ |
-| Testing | 40/40 tests pasando (pytest) | ✅ |
+| Testing | 83/83 tests pasando (pytest) | ✅ |
 | Logs | Logs de sincronización con stats | ✅ |
 | Migraciones | Flask-Migrate configurado | ✅ |
 | V1.5 IA | Publicación en Shopify con IA (Llama 3.2 local) | ✅ 🎉 |
-| V1.5 IA | Publicación multicanal (ML + Amazon) | 🟡 Pendiente |
+| V1.5 IA | Publicación en Mercado Libre con IA | ✅ 🎉 |
+| V1.5 IA | Publicación en Amazon (SP-API) | 🟡 Pendiente |
 
 ### 🎯 Pendiente
 
 | Feature | Descripción | Prioridad |
 |---------|-------------|-----------|
-| V1.5 IA ML | Publicar en Mercado Libre desde IA — **completa la promesa del clic único** | 🔴 Alta |
 | Onboarding | Conectar tiendas sin fricción técnica (hoy ML pide ngrok) | 🔴 Alta |
 | Fase 6 | Integración Amazon | 🟡 Media |
 | V2 Analytics | Dashboard de ventas con IA | 🟡 Media |
 | V3 Chat | Asistente conversacional | 🟢 Baja |
 | Odoo | Integración como fuente de verdad | ⚪️ Descartado por ahora |
 
-> **Nota de prioridades.** Hoy el flujo publica en un solo canal: el usuario genera
-> con IA y manda a Shopify. Un clic que llega a un canal no es "un clic hace muchas
-> cosas" — por eso ML sube a lo más alto, no por orden de roadmap.
+> **Nota de prioridades.** El flujo ya publica en los dos canales que tenemos
+> conectados: el usuario genera con IA y manda a Shopify y a Mercado Libre. Amazon
+> baja de prioridad porque ni siquiera tiene OAuth todavía; el siguiente cuello de
+> botella real es el onboarding.
+>
+> Falta cerrar el círculo de verdad: hoy son **dos botones**, uno por canal. "Un clic
+> hace muchas cosas" es un solo botón que manda a todos lados a la vez.
 >
 > Odoo baja porque servía al cliente anterior (empresa con ERP instalado). El
 > emprendedor que arranca no tiene ERP: la importación de Excel/CSV cubre el caso de
@@ -96,18 +100,19 @@ carga.** Entrada más fácil, permanencia más larga.
 
 ## 🤖 Roadmap de IA
 
-### Capa 1 — Publicación Multi-Canal (V1.5) 🟡 A MEDIAS
+### Capa 1 — Publicación Multi-Canal (V1.5) 🟢 CASI
 Usuario llena datos básicos → IA genera contenido optimizado → publica en todas las plataformas.
 
-⚠️ **Hoy solo llega a Shopify.** La IA ya genera el contenido para los tres canales,
-pero el botón de publicar únicamente manda a Shopify. Hasta que ML esté conectado,
-la promesa del clic único está incompleta.
+⚠️ **Falta el clic único.** Shopify y Mercado Libre ya reciben publicación desde la
+IA, pero cada uno con su propio botón. El siguiente paso es un único "Publicar en
+todos mis canales" — y Amazon, que todavía no tiene ni OAuth.
 
 **Tecnología:** Llama 3.2 via Ollama (local, gratis, sin dependencias)
 
 **Funcionando:**
 - ✅ Shopify: título, descripción HTML, tags, SEO — publicación como borrador
-- 🔜 Mercado Libre: título máx 60 chars, descripción texto plano
+- ✅ Mercado Libre: título máx 60 chars, descripción texto plano — publicación
+  pausada, con la categoría deducida sola del título (el usuario nunca la elige)
 - 🔜 Amazon: 5 bullet points, backend keywords
 
 **Impacto:**
@@ -141,7 +146,7 @@ Chat dentro de VendeFlow para consultas en lenguaje natural sobre inventario y v
 - **Auth:** JWT (flask-jwt-extended)
 - **Seguridad:** Fernet AES-128 (cryptography)
 - **IA:** Llama 3.2 via Ollama (local, gratis)
-- **Testing:** pytest + pytest-flask (40/40 ✅)
+- **Testing:** pytest + pytest-flask (83/83 ✅)
 
 ### Frontend
 - **Framework:** React + Vite
